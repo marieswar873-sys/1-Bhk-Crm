@@ -3,7 +3,7 @@ const express = require('express');
 const cors = require('cors');
 const path = require('path');
 const { initDb } = require('./db/schema');
-const { startDailyReportCron, sendDailyReport, sendTestReport } = require('./services/emailReport');
+const { startDailyReportCron, sendTestReport } = require('./services/emailReport');
 const { authMiddleware, requireRole } = require('./middleware/auth');
 
 const app = express();
@@ -11,9 +11,6 @@ const PORT = process.env.PORT || 3001;
 
 app.use(cors());
 app.use(express.json({ limit: '10mb' }));
-
-// Initialize database
-initDb();
 
 // API routes
 app.use('/api/auth', require('./routes/auth'));
@@ -26,15 +23,9 @@ app.use('/api/invoice', require('./routes/invoice'));
 app.use('/api/settings', require('./routes/settings'));
 app.use('/api/public', require('./routes/public'));
 
-// Manual trigger for daily report (for testing)
 app.post('/api/reports/send-daily', authMiddleware, requireRole('admin'), async (req, res) => {
-  try {
-    await sendTestReport();
-    res.json({ success: true, message: 'Today\'s sales report sent to all recipients!' });
-  } catch (err) {
-    console.error('[Email] Error:', err);
-    res.status(500).json({ error: err.message });
-  }
+  try { await sendTestReport(); res.json({ success: true, message: "Today's sales report sent!" }); }
+  catch (err) { res.status(500).json({ error: err.message }); }
 });
 
 // Serve frontend in production
@@ -46,7 +37,13 @@ app.get('/{*splat}', (req, res) => {
   }
 });
 
-app.listen(PORT, () => {
-  console.log(`1BHK CRM Server running on port ${PORT}`);
-  startDailyReportCron();
+// Initialize DB then start server
+initDb().then(() => {
+  app.listen(PORT, () => {
+    console.log(`1BHK CRM Server running on port ${PORT}`);
+    startDailyReportCron();
+  });
+}).catch(err => {
+  console.error('Failed to initialize database:', err);
+  process.exit(1);
 });
