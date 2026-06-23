@@ -324,16 +324,43 @@ export default function Billing() {
     setOrderType('takeaway');
   };
 
+  const [mobileTab, setMobileTab] = useState('menu'); // orders | menu | cart
+  const isMobile = typeof window !== 'undefined' && window.innerWidth < 768;
+
   const btnStyle = (active) => ({
     padding: '7px 14px', border: 'none', borderRadius: 6, cursor: 'pointer', fontSize: 12, fontWeight: 600,
     background: active ? '#1a1a2e' : '#e8e8e8', color: active ? '#fff' : '#555',
   });
 
+  const cartCount = newItems.length + existingItems.length;
+
   return (
-    <div style={{ display: 'flex', gap: 0, height: 'calc(100vh - 48px)', position: 'relative' }}>
+    <div style={{ display: 'flex', flexDirection: 'column', height: 'calc(100vh - 48px)', position: 'relative' }}>
+      {/* Mobile Tab Bar */}
+      <div style={{ display: 'none', background: '#1a1a2e', padding: '6px', gap: 4 }}
+        className="mobile-tabs">
+        {[['orders', `Orders (${activeOrders.length})`], ['menu', 'Menu'], ['cart', `Cart (${cartCount})`]].map(([key, label]) => (
+          <button key={key} onClick={() => setMobileTab(key)} style={{
+            flex: 1, padding: '8px', border: 'none', borderRadius: 6, cursor: 'pointer', fontSize: 12, fontWeight: 700,
+            background: mobileTab === key ? '#d4a853' : 'transparent', color: mobileTab === key ? '#1a1a2e' : '#fff',
+          }}>{label}</button>
+        ))}
+      </div>
+      <style>{`
+        @media (max-width: 768px) {
+          .mobile-tabs { display: flex !important; }
+          .desktop-sidebar { display: none !important; }
+          .desktop-menu { display: ${mobileTab === 'menu' ? 'flex' : 'none'} !important; }
+          .desktop-cart { display: ${mobileTab === 'cart' ? 'flex' : 'none'} !important; }
+          .mobile-orders { display: ${mobileTab === 'orders' ? 'block' : 'none'} !important; }
+          .desktop-cart { width: 100% !important; border-left: none !important; }
+          .desktop-menu { padding: 8px !important; }
+        }
+      `}</style>
+      <div style={{ display: 'flex', flex: 1, gap: 0, overflow: 'hidden' }}>
 
       {/* === LEFT: Active Orders Sidebar === */}
-      <div style={{ width: 200, background: '#fff', borderRight: '1px solid #e8e8e8', display: 'flex', flexDirection: 'column', flexShrink: 0 }}>
+      <div className="desktop-sidebar" style={{ width: 200, background: '#fff', borderRight: '1px solid #e8e8e8', display: 'flex', flexDirection: 'column', flexShrink: 0 }}>
         <button onClick={resetToNew} style={{
           margin: 10, padding: '10px', background: '#4caf50', color: '#fff', border: 'none', borderRadius: 8, cursor: 'pointer', fontSize: 13, fontWeight: 700
         }}>+ New Order</button>
@@ -358,8 +385,26 @@ export default function Billing() {
         </div>
       </div>
 
+      {/* === Mobile: Orders Tab === */}
+      <div className="mobile-orders" style={{ display: 'none', flex: 1, overflow: 'auto', background: '#fff', padding: 12 }}>
+        <button onClick={() => { resetToNew(); setMobileTab('menu'); }} style={{
+          width: '100%', padding: 10, background: '#4caf50', color: '#fff', border: 'none', borderRadius: 8, cursor: 'pointer', fontSize: 13, fontWeight: 700, marginBottom: 10
+        }}>+ New Order</button>
+        <div style={{ fontSize: 11, color: '#888', fontWeight: 600, marginBottom: 8 }}>ACTIVE ORDERS ({activeOrders.length})</div>
+        {activeOrders.map(o => (
+          <div key={o.id} onClick={() => { loadOrder(o.id); setMobileTab('cart'); }} style={{
+            padding: '10px 12px', cursor: 'pointer', borderBottom: '1px solid #f0f0f0', borderRadius: 8, marginBottom: 4,
+            background: currentOrder?.id === o.id ? '#e3f2fd' : '#f8f9fa'
+          }}>
+            <div style={{ fontSize: 13, fontWeight: 600, color: '#1a1a2e' }}>{o.order_number}</div>
+            <div style={{ fontSize: 11, color: '#888' }}>{o.order_type === 'dine_in' ? '🍽️' : '🛍️'} {o.customer_name || 'Walk-in'} · ₹{o.total}</div>
+          </div>
+        ))}
+        {activeOrders.length === 0 && <p style={{ textAlign: 'center', color: '#ccc', fontSize: 12, padding: 20 }}>No active orders</p>}
+      </div>
+
       {/* === MIDDLE: Menu Grid === */}
-      <div style={{ flex: 1, display: 'flex', flexDirection: 'column', padding: '12px 16px', minWidth: 0 }}>
+      <div className="desktop-menu" style={{ flex: 1, display: 'flex', flexDirection: 'column', padding: '12px 16px', minWidth: 0 }}>
         <div style={{ display: 'flex', gap: 8, marginBottom: 10, flexWrap: 'wrap', alignItems: 'center' }}>
           {mode === 'new_order' && <>
             {['takeaway', 'dine_in'].map(t => (
@@ -435,7 +480,7 @@ export default function Billing() {
 
       {/* === RIGHT: Order Panel === */}
       {mode !== 'payment' && (
-        <div style={{ width: 340, background: '#fff', borderLeft: '1px solid #e8e8e8', padding: 16, display: 'flex', flexDirection: 'column', flexShrink: 0 }}>
+        <div className="desktop-cart" style={{ width: 340, background: '#fff', borderLeft: '1px solid #e8e8e8', padding: 16, display: 'flex', flexDirection: 'column', flexShrink: 0 }}>
           <h3 style={{ margin: '0 0 4px', fontSize: 15, color: '#1a1a2e' }}>
             {mode === 'new_order' ? 'New Order' : `Order ${currentOrder?.order_number || ''}`}
           </h3>
@@ -576,6 +621,8 @@ export default function Billing() {
           </div>
         </div>
       )}
+
+      </div>{/* end flex wrapper */}
 
       {/* Variant Popup */}
       {variantPopup && (
