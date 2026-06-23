@@ -19,6 +19,15 @@ const DEFAULTS = {
   partner_emails: '[]',
   daily_report_enabled: 'true',
   daily_report_time: '23:00',
+  whatsapp_number: '',
+  operating_hours: '{"mon-sat": "11:00 AM - 10:00 PM", "sun": "12:00 PM - 9:00 PM"}',
+  service_areas: '',
+  about_text: '1BHK Kitchen — Best Hyderabadi Kitchen. We serve authentic Hyderabadi Dum Biryani, flavorful curries, and more. Takeaway & Delivery.',
+  social_instagram: '',
+  social_facebook: '',
+  social_youtube: '',
+  hero_tagline: 'Authentic Hyderabadi Dum Biryani',
+  hero_subtitle: 'Crafted with love, served with pride. Experience the royal taste of Hyderabad.',
 };
 
 router.get('/', authMiddleware, (req, res) => {

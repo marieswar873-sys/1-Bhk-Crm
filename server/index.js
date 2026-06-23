@@ -24,6 +24,7 @@ app.use('/api/dashboard', require('./routes/dashboard'));
 app.use('/api/import', require('./routes/csv-import'));
 app.use('/api/invoice', require('./routes/invoice'));
 app.use('/api/settings', require('./routes/settings'));
+app.use('/api/public', require('./routes/public'));
 
 // Manual trigger for daily report (for testing)
 app.post('/api/reports/send-daily', authMiddleware, requireRole('admin'), async (req, res) => {
