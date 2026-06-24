@@ -1,4 +1,5 @@
 const dns = require('dns');
+const { resolve4 } = require('dns/promises');
 dns.setDefaultResultOrder('ipv4first');
 
 const { Pool } = require('pg');
@@ -8,16 +9,53 @@ const { v4: uuid } = require('uuid');
 const DATABASE_URL = process.env.DATABASE_URL;
 if (!DATABASE_URL) { console.error('DATABASE_URL not set!'); process.exit(1); }
 
-const pool = new Pool({
-  connectionString: DATABASE_URL,
-  ssl: { rejectUnauthorized: false },
-});
+let pool;
+
+async function createPool() {
+  // Resolve hostname to IPv4 to avoid IPv6 issues on Render
+  try {
+    const url = new URL(DATABASE_URL);
+    const ips = await resolve4(url.hostname);
+    if (ips.length > 0) {
+      url.hostname = ips[0];
+      console.log(`[DB] Resolved ${new URL(DATABASE_URL).hostname} → ${ips[0]}`);
+      pool = new Pool({
+        connectionString: url.toString(),
+        ssl: { rejectUnauthorized: false },
+        connectionTimeoutMillis: 15000,
+        idleTimeoutMillis: 30000,
+        max: 5,
+      });
+      return;
+    }
+  } catch (e) {
+    console.log('[DB] IPv4 resolve failed, using original URL:', e.message);
+  }
+  pool = new Pool({
+    connectionString: DATABASE_URL,
+    ssl: { rejectUnauthorized: false },
+    connectionTimeoutMillis: 15000,
+    idleTimeoutMillis: 30000,
+    max: 5,
+  });
+}
+
+// Override Node's DNS lookup to force IPv4
+const net = require('net');
+const origConnect = net.Socket.prototype.connect;
+net.Socket.prototype.connect = function(options, ...args) {
+  if (typeof options === 'object' && options.host && !net.isIP(options.host)) {
+    options.family = 4;
+  }
+  return origConnect.call(this, options, ...args);
+};
 
 function getDb() {
   return pool;
 }
 
 async function initDb() {
+  await createPool();
   const client = await pool.connect();
   try {
     await client.query(`
