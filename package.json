@@ -1,16 +1,20 @@
 {
-  "name": "restaurant-billing",
+  "name": "1bhk-crm",
   "version": "1.0.0",
-  "description": "",
-  "main": "index.js",
+  "description": "1BHK Kitchen CRM - Restaurant Billing System",
+  "main": "electron.js",
   "scripts": {
     "server": "node server/index.js",
     "client": "cd client && npx react-scripts start",
     "dev": "concurrently \"npm run server\" \"npm run client\"",
-    "build": "cd client && npx react-scripts build"
+    "build": "cd client && npx react-scripts build",
+    "electron": "electron .",
+    "electron-dev": "npm run build && electron .",
+    "dist": "npm run build && electron-builder",
+    "dist:win": "npm run build && electron-builder --win"
   },
   "keywords": [],
-  "author": "",
+  "author": "1BHK Kitchen",
   "license": "ISC",
   "type": "commonjs",
   "dependencies": {
@@ -22,7 +26,35 @@
     "jsonwebtoken": "^9.0.3",
     "node-cron": "^4.5.0",
     "nodemailer": "^9.0.1",
-    "pg": "^8.22.0",
     "uuid": "^14.0.1"
+  },
+  "devDependencies": {
+    "electron": "^42.5.0",
+    "electron-builder": "^26.15.3",
+    "png-to-ico": "^3.0.1"
+  },
+  "build": {
+    "appId": "com.1bhk.crm",
+    "productName": "1BHK CRM",
+    "directories": {
+      "output": "dist"
+    },
+    "files": [
+      "electron.js",
+      "server/**/*",
+      "client/build/**/*",
+      "node_modules/**/*",
+      ".env"
+    ],
+    "win": {
+      "target": "nsis",
+      "icon": "client/public/logo.png"
+    },
+    "nsis": {
+      "oneClick": true,
+      "installerIcon": "client/public/logo.png",
+      "uninstallerIcon": "client/public/logo.png",
+      "shortcutName": "1BHK CRM"
+    }
   }
 }

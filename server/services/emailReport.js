@@ -2,118 +2,81 @@ const nodemailer = require('nodemailer');
 const cron = require('node-cron');
 const { getDb } = require('../db/schema');
 
-const pool = () => getDb();
-
-async function getSettings(outletId) {
-  const { rows } = await pool().query('SELECT key, value FROM settings WHERE outlet_id = $1', [outletId]);
-  const s = {}; for (const r of rows) s[r.key] = r.value;
-  return s;
+function getSettings(outletId) {
+  const rows = getDb().prepare('SELECT key, value FROM settings WHERE outlet_id=?').all(outletId);
+  const s = {}; for (const r of rows) s[r.key]=r.value; return s;
 }
 
-async function getReportForDate(outletId, date) {
-  const { rows: [summary] } = await pool().query(`
-    SELECT COUNT(*)::int as total_orders,
-      COALESCE(SUM(CASE WHEN payment_status='paid' THEN total ELSE 0 END), 0)::numeric as total_revenue,
-      COALESCE(SUM(CASE WHEN payment_status='paid' THEN tax_amount ELSE 0 END), 0)::numeric as total_tax,
-      COALESCE(SUM(CASE WHEN order_type='dine_in' AND payment_status='paid' THEN total ELSE 0 END), 0)::numeric as dine_in_revenue,
-      COALESCE(SUM(CASE WHEN order_type='takeaway' AND payment_status='paid' THEN total ELSE 0 END), 0)::numeric as takeaway_revenue,
-      COALESCE(SUM(CASE WHEN order_type='zomato' AND payment_status='paid' THEN total ELSE 0 END), 0)::numeric as zomato_revenue,
-      COALESCE(SUM(CASE WHEN order_type='swiggy' AND payment_status='paid' THEN total ELSE 0 END), 0)::numeric as swiggy_revenue,
-      COUNT(CASE WHEN order_type='dine_in' THEN 1 END)::int as dine_in_count,
-      COUNT(CASE WHEN order_type='takeaway' THEN 1 END)::int as takeaway_count,
-      COUNT(CASE WHEN order_type='zomato' THEN 1 END)::int as zomato_count,
-      COUNT(CASE WHEN order_type='swiggy' THEN 1 END)::int as swiggy_count,
-      COUNT(CASE WHEN status='cancelled' THEN 1 END)::int as cancelled_count
-    FROM orders WHERE outlet_id = $1 AND created_at::date = $2
-  `, [outletId, date]);
-
-  const { rows: topItems } = await pool().query(`
-    SELECT mi.name, mi.is_veg, SUM(oi.quantity)::int as qty, SUM(oi.total)::numeric as revenue
-    FROM order_items oi JOIN orders o ON oi.order_id = o.id JOIN menu_items mi ON oi.menu_item_id = mi.id
-    WHERE o.outlet_id = $1 AND o.created_at::date = $2 AND o.status != 'cancelled'
-    GROUP BY mi.id, mi.name, mi.is_veg ORDER BY qty DESC LIMIT 10
-  `, [outletId, date]);
-
-  const { rows: orders } = await pool().query(`
-    SELECT order_number, order_type, customer_name, total, payment_method, status, created_at
-    FROM orders WHERE outlet_id = $1 AND created_at::date = $2 ORDER BY created_at
-  `, [outletId, date]);
-
+function getReportForDate(outletId, date) {
+  const db = getDb();
+  const summary = db.prepare("SELECT COUNT(*) as total_orders, COALESCE(SUM(CASE WHEN payment_status='paid' THEN total ELSE 0 END),0) as total_revenue, COALESCE(SUM(CASE WHEN payment_status='paid' THEN tax_amount ELSE 0 END),0) as total_tax, COALESCE(SUM(CASE WHEN order_type='dine_in' AND payment_status='paid' THEN total ELSE 0 END),0) as dine_in_revenue, COALESCE(SUM(CASE WHEN order_type='takeaway' AND payment_status='paid' THEN total ELSE 0 END),0) as takeaway_revenue, COUNT(CASE WHEN order_type='dine_in' THEN 1 END) as dine_in_count, COUNT(CASE WHEN order_type='takeaway' THEN 1 END) as takeaway_count, COUNT(CASE WHEN status='cancelled' THEN 1 END) as cancelled_count FROM orders WHERE outlet_id=? AND date(created_at)=?").get(outletId, date);
+  const topItems = db.prepare("SELECT mi.name, mi.is_veg, SUM(oi.quantity) as qty, SUM(oi.total) as revenue FROM order_items oi JOIN orders o ON oi.order_id=o.id JOIN menu_items mi ON oi.menu_item_id=mi.id WHERE o.outlet_id=? AND date(o.created_at)=? AND o.status!='cancelled' GROUP BY mi.id ORDER BY qty DESC LIMIT 10").all(outletId, date);
+  const orders = db.prepare('SELECT order_number,order_type,customer_name,total,payment_method,status FROM orders WHERE outlet_id=? AND date(created_at)=? ORDER BY created_at').all(outletId, date);
   return { date, summary, topItems, orders };
 }
 
-function buildEmailHtml(report, outletName) {
+function buildEmailHtml(report, name) {
   const s = report.summary;
-  return `<div style="max-width:600px;margin:0 auto;font-family:Arial,sans-serif">
-    <div style="background:#1a1a2e;padding:20px;text-align:center;border-radius:12px 12px 0 0">
-      <h1 style="color:#fff;margin:0">${outletName || '1BHK Kitchen'}</h1>
-      <p style="color:#4fc3f7;margin:4px 0 0">Sales Report — ${report.date}</p>
-    </div>
-    <div style="padding:20px;background:#fff">
-      <table style="width:100%;text-align:center;margin-bottom:20px"><tr>
-        <td style="padding:12px;background:#e3f2fd;border-radius:8px"><div style="font-size:24px;font-weight:700">₹${Math.round(parseFloat(s.total_revenue))}</div><div style="font-size:11px;color:#666">Revenue</div></td>
-        <td style="width:8px"></td>
-        <td style="padding:12px;background:#e8f5e9;border-radius:8px"><div style="font-size:24px;font-weight:700">${s.total_orders}</div><div style="font-size:11px;color:#666">Orders</div></td>
-        <td style="width:8px"></td>
-        <td style="padding:12px;background:#fff3e0;border-radius:8px"><div style="font-size:24px;font-weight:700">₹${Math.round(parseFloat(s.total_tax))}</div><div style="font-size:11px;color:#666">GST</div></td>
-      </tr></table>
-      <p style="font-size:13px;color:#666">Dine-in: ₹${Math.round(parseFloat(s.dine_in_revenue))} (${s.dine_in_count}) | Takeaway: ₹${Math.round(parseFloat(s.takeaway_revenue))} (${s.takeaway_count})</p>
-      ${report.topItems.length ? '<h3>Top Items</h3>' + report.topItems.map((i,n) => `<p style="font-size:13px">${n+1}. ${i.name} — ${i.qty} sold — ₹${Math.round(parseFloat(i.revenue))}</p>`).join('') : ''}
-    </div>
-    <div style="background:#f8f9fa;padding:12px;text-align:center;border-radius:0 0 12px 12px;font-size:11px;color:#888">Auto-generated by 1BHK CRM</div>
-  </div>`;
+  return `<div style="max-width:600px;margin:0 auto;font-family:Arial"><div style="background:#1a1a2e;padding:20px;text-align:center;border-radius:12px 12px 0 0"><h1 style="color:#fff;margin:0">${name}</h1><p style="color:#4fc3f7;margin:4px 0 0">Sales Report — ${report.date}</p></div><div style="padding:20px;background:#fff"><table style="width:100%;text-align:center;margin-bottom:20px"><tr><td style="padding:12px;background:#e3f2fd;border-radius:8px"><div style="font-size:24px;font-weight:700">₹${Math.round(s.total_revenue)}</div><div style="font-size:11px;color:#666">Revenue</div></td><td style="width:8px"></td><td style="padding:12px;background:#e8f5e9;border-radius:8px"><div style="font-size:24px;font-weight:700">${s.total_orders}</div><div style="font-size:11px;color:#666">Orders</div></td></tr></table>${report.topItems.length?'<h3>Top Items</h3>'+report.topItems.map((i,n)=>`<p style="font-size:13px">${n+1}. ${i.name} — ${i.qty} sold — ₹${Math.round(i.revenue)}</p>`).join(''):''}</div><div style="background:#f8f9fa;padding:12px;text-align:center;border-radius:0 0 12px 12px;font-size:11px;color:#888">Auto-generated by 1BHK CRM</div></div>`;
 }
 
 async function sendDailyReport() {
-  const { rows: outlets } = await pool().query('SELECT * FROM outlets');
+  const db = getDb(); const outlets = db.prepare('SELECT * FROM outlets').all();
   for (const outlet of outlets) {
-    const settings = await getSettings(outlet.id);
-    if (settings.daily_report_enabled !== 'true') continue;
-    let recipients = []; try { recipients = JSON.parse(settings.partner_emails || '[]'); } catch {}
+    const settings = getSettings(outlet.id);
+    if (settings.daily_report_enabled!=='true') continue;
+    let recipients=[]; try { recipients=JSON.parse(settings.partner_emails||'[]'); } catch {}
     if (settings.company_email) recipients.unshift(settings.company_email);
     if (!recipients.length) continue;
-
-    const yesterday = new Date(Date.now() - 86400000).toISOString().slice(0, 10);
-    const report = await getReportForDate(outlet.id, yesterday);
-    const html = buildEmailHtml(report, settings.outlet_name || outlet.name);
-
-    const smtpUser = process.env.SMTP_USER || settings.company_email;
-    const smtpPass = process.env.SMTP_PASS;
-    if (!smtpPass) { console.log('[Email] SMTP_PASS not set'); continue; }
-
+    const yesterday = new Date(Date.now()-86400000).toISOString().slice(0,10);
+    const report = getReportForDate(outlet.id, yesterday);
+    const html = buildEmailHtml(report, settings.outlet_name||outlet.name);
+    const smtpUser=process.env.SMTP_USER||settings.company_email, smtpPass=process.env.SMTP_PASS;
+    if (!smtpPass) continue;
     try {
-      const transporter = nodemailer.createTransport({ service: 'gmail', auth: { user: smtpUser, pass: smtpPass } });
-      await transporter.sendMail({ from: `"1BHK CRM" <${smtpUser}>`, to: recipients.join(', '), subject: `📊 Sales Report — ${report.date} — ${settings.outlet_name || '1BHK Kitchen'}`, html });
-      console.log(`[Email] Report sent to: ${recipients.join(', ')}`);
+      const t = nodemailer.createTransport({ service:'gmail', auth:{user:smtpUser,pass:smtpPass} });
+      await t.sendMail({ from:`"1BHK CRM" <${smtpUser}>`, to:recipients.join(', '), subject:`📊 Sales Report — ${report.date} — ${settings.outlet_name||'1BHK Kitchen'}`, html });
+      console.log(`[Email] Sent to: ${recipients.join(', ')}`);
     } catch (err) { console.error('[Email] Failed:', err.message); }
   }
 }
 
 async function sendTestReport() {
-  const { rows: outlets } = await pool().query('SELECT * FROM outlets');
+  const db = getDb(); const outlets = db.prepare('SELECT * FROM outlets').all();
   for (const outlet of outlets) {
-    const settings = await getSettings(outlet.id);
-    let recipients = []; try { recipients = JSON.parse(settings.partner_emails || '[]'); } catch {}
+    const settings = getSettings(outlet.id);
+    let recipients=[]; try { recipients=JSON.parse(settings.partner_emails||'[]'); } catch {}
     if (settings.company_email) recipients.unshift(settings.company_email);
-    if (!recipients.length) throw new Error('No recipients configured');
-
-    const today = new Date().toISOString().slice(0, 10);
-    const report = await getReportForDate(outlet.id, today);
-    const html = buildEmailHtml(report, settings.outlet_name || outlet.name);
-
-    const smtpUser = process.env.SMTP_USER || settings.company_email;
-    const smtpPass = process.env.SMTP_PASS;
+    if (!recipients.length) throw new Error('No recipients');
+    const today = new Date().toISOString().slice(0,10);
+    const report = getReportForDate(outlet.id, today);
+    const html = buildEmailHtml(report, settings.outlet_name||outlet.name);
+    const smtpUser=process.env.SMTP_USER||settings.company_email, smtpPass=process.env.SMTP_PASS;
     if (!smtpPass) throw new Error('SMTP_PASS not set');
-
-    const transporter = nodemailer.createTransport({ service: 'gmail', auth: { user: smtpUser, pass: smtpPass } });
-    await transporter.sendMail({ from: `"1BHK CRM" <${smtpUser}>`, to: recipients.join(', '), subject: `📊 Sales Report — ${today} (Test) — ${settings.outlet_name || '1BHK Kitchen'}`, html });
-    console.log(`[Email] Test report sent to: ${recipients.join(', ')}`);
+    const t = nodemailer.createTransport({ service:'gmail', auth:{user:smtpUser,pass:smtpPass} });
+    await t.sendMail({ from:`"1BHK CRM" <${smtpUser}>`, to:recipients.join(', '), subject:`📊 Sales Report — ${today} (Test) — ${settings.outlet_name||'1BHK Kitchen'}`, html });
+    console.log(`[Email] Test sent to: ${recipients.join(', ')}`);
   }
 }
 
 function startDailyReportCron() {
-  cron.schedule('0 23 * * *', () => { sendDailyReport().catch(e => console.error('[Cron]', e)); });
-  console.log('[Cron] Daily report scheduled at 11 PM');
+  // Check every hour, send if current hour matches configured time
+  cron.schedule('0 * * * *', () => {
+    try {
+      const db = getDb();
+      const outlet = db.prepare('SELECT * FROM outlets LIMIT 1').get();
+      if (!outlet) return;
+      const settings = getSettings(outlet.id);
+      const reportTime = settings.daily_report_time || '06:00';
+      const reportHour = parseInt(reportTime.split(':')[0]);
+      const currentHour = new Date().getHours();
+      if (currentHour === reportHour) {
+        console.log(`[Cron] Sending daily report (configured time: ${reportTime})`);
+        sendDailyReport().catch(e => console.error('[Cron]', e));
+      }
+    } catch (e) { console.error('[Cron] Error:', e); }
+  });
+  console.log('[Cron] Daily report scheduled (checks hourly, sends at configured time)');
 }
 
 module.exports = { sendDailyReport, sendTestReport, startDailyReportCron };

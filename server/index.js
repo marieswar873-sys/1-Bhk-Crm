@@ -4,15 +4,40 @@ const cors = require('cors');
 const path = require('path');
 const { initDb } = require('./db/schema');
 const { startDailyReportCron, sendTestReport } = require('./services/emailReport');
+const { startSyncService } = require('./services/supabaseSync');
 const { authMiddleware, requireRole } = require('./middleware/auth');
 
 const app = express();
 const PORT = process.env.PORT || 3001;
 
+// Security headers
+app.use((req, res, next) => {
+  res.setHeader('X-Content-Type-Options', 'nosniff');
+  res.setHeader('X-Frame-Options', 'DENY');
+  res.setHeader('X-XSS-Protection', '1; mode=block');
+  res.setHeader('Referrer-Policy', 'strict-origin-when-cross-origin');
+  res.setHeader('Permissions-Policy', 'camera=(), microphone=(), geolocation=()');
+  next();
+});
+
 app.use(cors());
 app.use(express.json({ limit: '10mb' }));
 
-// API routes
+// Rate limiting — prevent brute force
+const loginAttempts = {};
+app.use('/api/auth/login', (req, res, next) => {
+  const ip = req.ip;
+  if (!loginAttempts[ip]) loginAttempts[ip] = { count: 0, lastAttempt: 0 };
+  const now = Date.now();
+  if (now - loginAttempts[ip].lastAttempt > 900000) loginAttempts[ip].count = 0; // Reset after 15 min
+  loginAttempts[ip].lastAttempt = now;
+  loginAttempts[ip].count++;
+  if (loginAttempts[ip].count > 10) return res.status(429).json({ error: 'Too many login attempts. Try again in 15 minutes.' });
+  next();
+});
+
+initDb();
+
 app.use('/api/auth', require('./routes/auth'));
 app.use('/api/menu', require('./routes/menu'));
 app.use('/api/orders', require('./routes/orders'));
@@ -24,26 +49,18 @@ app.use('/api/settings', require('./routes/settings'));
 app.use('/api/public', require('./routes/public'));
 
 app.post('/api/reports/send-daily', authMiddleware, requireRole('admin'), async (req, res) => {
-  try { await sendTestReport(); res.json({ success: true, message: "Today's sales report sent!" }); }
+  try { await sendTestReport(); res.json({ success: true, message: "Report sent!" }); }
   catch (err) { res.status(500).json({ error: err.message }); }
 });
 
-// Serve frontend in production
 const clientBuild = path.join(__dirname, '..', 'client', 'build');
 app.use(express.static(clientBuild));
 app.get('/{*splat}', (req, res) => {
-  if (!req.path.startsWith('/api')) {
-    res.sendFile(path.join(clientBuild, 'index.html'));
-  }
+  if (!req.path.startsWith('/api')) res.sendFile(path.join(clientBuild, 'index.html'));
 });
 
-// Initialize DB then start server
-initDb().then(() => {
-  app.listen(PORT, () => {
-    console.log(`1BHK CRM Server running on port ${PORT}`);
-    startDailyReportCron();
-  });
-}).catch(err => {
-  console.error('Failed to initialize database:', err);
-  process.exit(1);
+app.listen(PORT, () => {
+  console.log(`1BHK CRM running on port ${PORT}`);
+  startDailyReportCron();
+  startSyncService();
 });

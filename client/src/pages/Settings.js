@@ -148,7 +148,18 @@ export default function Settings() {
           <div style={{ fontSize: 11, color: '#888', marginTop: 4 }}>This email sends the daily report. Set SMTP_PASS in .env for Gmail App Password.</div>
         </div>
 
-        {toggleBtn('daily_report_enabled', 'Daily Sales Report', 'Auto-send yesterday\'s sales report every night at 11 PM')}
+        {toggleBtn('daily_report_enabled', 'Daily Sales Report', 'Auto-send yesterday\'s sales report at configured time')}
+
+        {settings.daily_report_enabled === 'true' && (
+          <div style={{ marginBottom: 16 }}>
+            <label style={labelStyle}>Report Send Time</label>
+            <select value={settings.daily_report_time || '06:00'} onChange={e => update('daily_report_time', e.target.value)} style={fieldStyle}>
+              {['05:00','06:00','07:00','08:00','09:00','10:00','21:00','22:00','23:00'].map(t => (
+                <option key={t} value={t}>{t === '05:00' ? '5 AM' : t === '06:00' ? '6 AM (Recommended)' : t === '07:00' ? '7 AM' : t === '08:00' ? '8 AM' : t === '09:00' ? '9 AM' : t === '10:00' ? '10 AM' : t === '21:00' ? '9 PM' : t === '22:00' ? '10 PM' : '11 PM'}</option>
+              ))}
+            </select>
+          </div>
+        )}
 
         {/* Partner Emails */}
         <div style={{ marginTop: 8 }}>
