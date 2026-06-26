@@ -4,22 +4,28 @@
 // only ever touch one restaurant's data.
 const { getDb } = require('../db/schema');
 
-const API_URL = process.env.SAAS_API_URL || 'https://saas-7i5z.onrender.com';
+const DEFAULT_API_URL = 'https://saas-7i5z.onrender.com';
 
-// API key resolution: env var (baked at build) → SQLite settings ('cloud_api_key', set by owner in-app)
-function getApiKey() {
-  if (process.env.TENANT_API_KEY) return process.env.TENANT_API_KEY;
+function getSetting(key) {
   try {
-    const db = getDb();
-    const row = db.prepare("SELECT value FROM settings WHERE key = 'cloud_api_key' LIMIT 1").get();
+    const row = getDb().prepare('SELECT value FROM settings WHERE key = ? LIMIT 1').get(key);
     return row?.value || null;
   } catch {
     return null;
   }
 }
 
+// API key resolution: env var (baked at build) → SQLite settings ('cloud_api_key', set by owner in-app)
+function getApiKey() {
+  return process.env.TENANT_API_KEY || getSetting('cloud_api_key') || null;
+}
+
+function getApiUrl() {
+  return process.env.SAAS_API_URL || getSetting('cloud_api_url') || DEFAULT_API_URL;
+}
+
 async function postJson(path, body, apiKey) {
-  const res = await fetch(`${API_URL}${path}`, {
+  const res = await fetch(`${getApiUrl()}${path}`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', 'X-API-Key': apiKey },
     body: JSON.stringify(body),
@@ -122,7 +128,7 @@ function startSyncService() {
   // Always schedule — the owner may paste their API key after first launch.
   setTimeout(() => fullSync(), 10000);
   setInterval(() => fullSync(), 5 * 60 * 1000);
-  console.log(`[Sync] Cloud sync scheduled (every 5 min) → ${API_URL}`);
+  console.log(`[Sync] Cloud sync scheduled (every 5 min) → ${getApiUrl()}`);
 }
 
 module.exports = { startSyncService, fullSync, syncMenu, syncOrders, getApiKey };

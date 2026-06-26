@@ -7,6 +7,8 @@ export default function Settings() {
   const [loading, setLoading] = useState(true);
   const [newEmail, setNewEmail] = useState('');
   const [sendingReport, setSendingReport] = useState(false);
+  const [showKey, setShowKey] = useState(false);
+  const [syncing, setSyncing] = useState(false);
 
   useEffect(() => {
     api.get('/settings').then(r => { setSettings(r.data); setLoading(false); });
@@ -41,6 +43,19 @@ export default function Settings() {
     const updated = partnerEmails.filter(e => e !== email);
     update('partner_emails', JSON.stringify(updated));
     toast.success('Email removed — click Save to confirm');
+  };
+
+  const syncNow = async () => {
+    setSyncing(true);
+    try {
+      await save();
+      const { data } = await api.post('/sync/now');
+      toast.success(data.message || 'Sync complete');
+    } catch (err) {
+      toast.error(err.response?.data?.error || 'Sync failed');
+    } finally {
+      setSyncing(false);
+    }
   };
 
   const sendTestReport = async () => {
@@ -200,6 +215,41 @@ export default function Settings() {
         }}>
           {sendingReport ? 'Sending...' : '📧 Send Test Report Now'}
         </button>
+      </div>
+
+      {/* Cloud Sync */}
+      <div style={{ background: '#fff', borderRadius: 12, padding: 24, marginBottom: 16, boxShadow: '0 2px 8px rgba(0,0,0,0.06)' }}>
+        <h3 style={{ margin: '0 0 4px', fontSize: 16, color: '#1a1a2e' }}>☁️ Cloud Sync</h3>
+        <div style={{ fontSize: 12, color: '#888', marginBottom: 16 }}>
+          Connects this billing app to your online dashboard & website. Paste the <b>API Key</b> from your SaaS admin panel (shown when the restaurant was added).
+        </div>
+
+        <div style={{ marginBottom: 16 }}>
+          <label style={labelStyle}>Tenant API Key</label>
+          <div style={{ display: 'flex', gap: 8 }}>
+            <input type={showKey ? 'text' : 'password'} value={settings.cloud_api_key || ''}
+              onChange={e => update('cloud_api_key', e.target.value)} placeholder="paste your API key"
+              style={{ ...fieldStyle, fontFamily: 'monospace', flex: 1 }} />
+            <button onClick={() => setShowKey(s => !s)} style={{
+              padding: '10px 14px', background: '#eee', border: 'none', borderRadius: 8, cursor: 'pointer', fontSize: 13, whiteSpace: 'nowrap'
+            }}>{showKey ? 'Hide' : 'Show'}</button>
+          </div>
+        </div>
+
+        <div style={{ marginBottom: 16 }}>
+          <label style={labelStyle}>Cloud API URL</label>
+          <input value={settings.cloud_api_url || ''} onChange={e => update('cloud_api_url', e.target.value)}
+            placeholder="https://saas-7i5z.onrender.com" style={{ ...fieldStyle, fontFamily: 'monospace' }} />
+          <div style={{ fontSize: 11, color: '#888', marginTop: 4 }}>Leave default unless you self-host the SaaS API.</div>
+        </div>
+
+        <button onClick={syncNow} disabled={syncing} style={{
+          padding: '10px 20px', background: '#2196f3', color: '#fff', border: 'none',
+          borderRadius: 8, cursor: syncing ? 'default' : 'pointer', fontSize: 13, fontWeight: 600
+        }}>
+          {syncing ? 'Syncing…' : '☁️ Sync Now'}
+        </button>
+        <div style={{ fontSize: 11, color: '#888', marginTop: 8 }}>Sync also runs automatically every 5 minutes.</div>
       </div>
 
       {/* Save All */}
