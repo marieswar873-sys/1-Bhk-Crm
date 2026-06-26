@@ -78,9 +78,28 @@ export default function Settings() {
     const file = e.target.files?.[0];
     if (!file) return;
     if (!file.type.startsWith('image/')) return toast.error('Please choose an image file');
-    if (file.size > 1024 * 1024) return toast.error('Image too large (max 1 MB)');
+    // Resize to a small thumbnail (logos on bills are tiny) so any size uploads,
+    // stays small to store, and prints reliably.
     const reader = new FileReader();
-    reader.onload = () => { update('logo_url', reader.result); toast.success('Logo loaded — click Save to confirm'); };
+    reader.onload = () => {
+      const img = new Image();
+      img.onload = () => {
+        const MAX = 300;
+        let { width, height } = img;
+        if (width > MAX || height > MAX) {
+          if (width >= height) { height = Math.round((height * MAX) / width); width = MAX; }
+          else { width = Math.round((width * MAX) / height); height = MAX; }
+        }
+        const canvas = document.createElement('canvas');
+        canvas.width = width; canvas.height = height;
+        canvas.getContext('2d').drawImage(img, 0, 0, width, height);
+        update('logo_url', canvas.toDataURL('image/png'));
+        toast.success('Logo loaded — click "Save All Settings" to confirm');
+      };
+      img.onerror = () => toast.error('Could not read that image — try a PNG or JPG');
+      img.src = reader.result;
+    };
+    reader.onerror = () => toast.error('Could not read that file');
     reader.readAsDataURL(file);
   };
 
