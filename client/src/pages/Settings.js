@@ -9,6 +9,7 @@ export default function Settings() {
   const [sendingReport, setSendingReport] = useState(false);
   const [showKey, setShowKey] = useState(false);
   const [syncing, setSyncing] = useState(false);
+  const [restoring, setRestoring] = useState(false);
 
   useEffect(() => {
     api.get('/settings').then(r => { setSettings(r.data); setLoading(false); });
@@ -56,6 +57,31 @@ export default function Settings() {
     } finally {
       setSyncing(false);
     }
+  };
+
+  const restoreFromCloud = async () => {
+    if (!window.confirm('Pull your menu and outlet details from the cloud into this app? Items with the same ID will be updated. Use this on a fresh install.')) return;
+    setRestoring(true);
+    try {
+      await save();
+      const { data } = await api.post('/sync/restore');
+      toast.success(data.message || 'Restored from cloud');
+      api.get('/settings').then(r => setSettings(r.data));
+    } catch (err) {
+      toast.error(err.response?.data?.error || 'Restore failed');
+    } finally {
+      setRestoring(false);
+    }
+  };
+
+  const handleLogoUpload = (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    if (!file.type.startsWith('image/')) return toast.error('Please choose an image file');
+    if (file.size > 1024 * 1024) return toast.error('Image too large (max 1 MB)');
+    const reader = new FileReader();
+    reader.onload = () => { update('logo_url', reader.result); toast.success('Logo loaded — click Save to confirm'); };
+    reader.readAsDataURL(file);
   };
 
   const sendTestReport = async () => {
@@ -141,8 +167,24 @@ export default function Settings() {
             <input type="number" value={settings.packing_charges} onChange={e => update('packing_charges', e.target.value)} style={fieldStyle} />
           </div>
           <div style={{ gridColumn: 'span 2' }}>
-            <label style={labelStyle}>Logo URL (shown on printed bills)</label>
-            <input value={settings.logo_url || ''} onChange={e => update('logo_url', e.target.value)} placeholder="https://your-logo.png — leave blank to use the default" style={fieldStyle} />
+            <label style={labelStyle}>Logo (shown on printed bills)</label>
+            <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
+              {settings.logo_url ? (
+                <img src={settings.logo_url} alt="logo" style={{ width: 48, height: 48, objectFit: 'contain', border: '1px solid #eee', borderRadius: 8, background: '#fff' }} />
+              ) : null}
+              <label style={{ padding: '10px 16px', background: '#1a1a2e', color: '#fff', borderRadius: 8, cursor: 'pointer', fontSize: 13, fontWeight: 600, whiteSpace: 'nowrap' }}>
+                Upload Image
+                <input type="file" accept="image/*" onChange={handleLogoUpload} style={{ display: 'none' }} />
+              </label>
+              {settings.logo_url ? (
+                <button onClick={() => update('logo_url', '')} style={{ padding: '10px 14px', background: '#eee', border: 'none', borderRadius: 8, cursor: 'pointer', fontSize: 13 }}>Remove</button>
+              ) : null}
+            </div>
+            <input value={(settings.logo_url || '').startsWith('data:') ? '' : (settings.logo_url || '')}
+              onChange={e => update('logo_url', e.target.value)}
+              placeholder="…or paste an image URL — leave blank to use the default"
+              style={{ ...fieldStyle, marginTop: 8 }} />
+            <div style={{ fontSize: 11, color: '#888', marginTop: 4 }}>Upload a PNG/JPG (max 1 MB) or paste a URL. Shown at the top of every printed bill.</div>
           </div>
         </div>
       </div>
@@ -247,13 +289,21 @@ export default function Settings() {
           <div style={{ fontSize: 11, color: '#888', marginTop: 4 }}>Leave default unless you self-host the SaaS API.</div>
         </div>
 
-        <button onClick={syncNow} disabled={syncing} style={{
-          padding: '10px 20px', background: '#2196f3', color: '#fff', border: 'none',
-          borderRadius: 8, cursor: syncing ? 'default' : 'pointer', fontSize: 13, fontWeight: 600
-        }}>
-          {syncing ? 'Syncing…' : '☁️ Sync Now'}
-        </button>
-        <div style={{ fontSize: 11, color: '#888', marginTop: 8 }}>Sync also runs automatically every 5 minutes.</div>
+        <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+          <button onClick={syncNow} disabled={syncing} style={{
+            padding: '10px 20px', background: '#2196f3', color: '#fff', border: 'none',
+            borderRadius: 8, cursor: syncing ? 'default' : 'pointer', fontSize: 13, fontWeight: 600
+          }}>
+            {syncing ? 'Syncing…' : '☁️ Sync Now'}
+          </button>
+          <button onClick={restoreFromCloud} disabled={restoring} style={{
+            padding: '10px 20px', background: '#fff', color: '#2196f3', border: '1px solid #2196f3',
+            borderRadius: 8, cursor: restoring ? 'default' : 'pointer', fontSize: 13, fontWeight: 600
+          }}>
+            {restoring ? 'Restoring…' : '⬇️ Restore Menu from Cloud'}
+          </button>
+        </div>
+        <div style={{ fontSize: 11, color: '#888', marginTop: 8 }}>Sync (up) runs automatically every 5 minutes. Restore (down) pulls your menu from the cloud — use it on a fresh install.</div>
       </div>
 
       {/* Save All */}

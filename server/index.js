@@ -4,7 +4,7 @@ const cors = require('cors');
 const path = require('path');
 const { initDb } = require('./db/schema');
 const { startDailyReportCron, sendTestReport } = require('./services/emailReport');
-const { startSyncService, fullSync, getApiKey } = require('./services/supabaseSync');
+const { startSyncService, fullSync, getApiKey, restoreFromCloud } = require('./services/supabaseSync');
 const { authMiddleware, requireRole } = require('./middleware/auth');
 
 const app = express();
@@ -56,6 +56,12 @@ app.post('/api/reports/send-daily', authMiddleware, requireRole('admin'), async 
 app.post('/api/sync/now', authMiddleware, requireRole('admin', 'manager'), async (req, res) => {
   if (!getApiKey()) return res.status(400).json({ error: 'No API key set. Add your Cloud API Key in Settings and save first.' });
   try { await fullSync(); res.json({ success: true, message: 'Sync complete — menu & orders pushed to the cloud.' }); }
+  catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+app.post('/api/sync/restore', authMiddleware, requireRole('admin', 'manager'), async (req, res) => {
+  if (!getApiKey()) return res.status(400).json({ error: 'No API key set. Add your Cloud API Key in Settings and save first.' });
+  try { const c = await restoreFromCloud(); res.json({ success: true, message: `Restored ${c.items} items and ${c.categories} categories from the cloud.` }); }
   catch (err) { res.status(500).json({ error: err.message }); }
 });
 

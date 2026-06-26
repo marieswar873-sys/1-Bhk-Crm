@@ -3,6 +3,7 @@
 // tenant API key, and the server scopes every write to that tenant. A leaked key can
 // only ever touch one restaurant's data.
 const { getDb } = require('../db/schema');
+const { v4: uuid } = require('uuid');
 
 const DEFAULT_API_URL = 'https://saas-7i5z.onrender.com';
 
@@ -35,9 +36,52 @@ async function postJson(path, body, apiKey) {
   return data;
 }
 
+async function getJson(path, apiKey) {
+  const res = await fetch(`${getApiUrl()}${path}`, { headers: { 'X-API-Key': apiKey } });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(data.error || `${path} failed (${res.status})`);
+  return data;
+}
+
 // Cloud order_type is constrained to dine_in/takeaway; fold platform orders into takeaway.
 function normalizeOrderType(t) {
   return t === 'dine_in' ? 'dine_in' : 'takeaway';
+}
+
+// Pull menu + outlet info from the cloud into the local DB (fresh install / restore).
+async function restoreFromCloud(apiKey) {
+  apiKey = apiKey || getApiKey();
+  if (!apiKey) throw new Error('No API key set');
+  const db = getDb();
+  const outlet = db.prepare('SELECT id FROM outlets LIMIT 1').get();
+  if (!outlet) throw new Error('No outlet found in local database');
+
+  const [menu, info] = await Promise.all([
+    getJson('/api/sync/menu', apiKey),
+    getJson('/api/sync/info', apiKey).catch(() => ({})),
+  ]);
+
+  const insCat = db.prepare('INSERT OR REPLACE INTO categories (id, name, outlet_id, sort_order) VALUES (?, ?, ?, ?)');
+  const insItem = db.prepare('INSERT OR REPLACE INTO menu_items (id, name, category_id, outlet_id, price, tax_percent, is_veg, is_available, packing_charge) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)');
+  const insVar = db.prepare('INSERT OR REPLACE INTO menu_variants (id, menu_item_id, name, price_delta) VALUES (?, ?, ?, ?)');
+  const setSetting = db.prepare('INSERT INTO settings (id, outlet_id, key, value) VALUES (?, ?, ?, ?) ON CONFLICT(outlet_id, key) DO UPDATE SET value=excluded.value');
+
+  const settingsMap = {
+    outlet_name: info.name, outlet_address: info.address, outlet_phone: info.phone,
+    outlet_gstin: info.gstin, outlet_fssai: info.fssai, whatsapp_number: info.whatsapp_number,
+    company_email: info.email, hero_tagline: info.tagline,
+  };
+
+  db.transaction(() => {
+    for (const c of (menu.categories || [])) insCat.run(c.id, c.name, outlet.id, c.sort_order || 0);
+    for (const i of (menu.items || [])) insItem.run(i.id, i.name, i.category_id, outlet.id, i.price, i.tax_percent ?? 5, i.is_veg ? 1 : 0, i.is_available === false ? 0 : 1, i.packing_charge ?? 0);
+    for (const v of (menu.variants || [])) insVar.run(v.id, v.menu_item_id, v.name, v.price_delta ?? 0);
+    for (const [k, val] of Object.entries(settingsMap)) if (val) setSetting.run(uuid(), outlet.id, k, String(val));
+  })();
+
+  const counts = { categories: (menu.categories || []).length, items: (menu.items || []).length, variants: (menu.variants || []).length };
+  console.log(`[Restore] Pulled ${counts.items} items / ${counts.categories} categories from cloud`);
+  return counts;
 }
 
 async function syncMenu(apiKey) {
@@ -115,6 +159,11 @@ async function fullSync() {
   const apiKey = getApiKey();
   if (!apiKey) { console.log('[Sync] No tenant API key set — sync skipped. Add it in Settings.'); return; }
   try {
+    // First-run: if this install has no menu yet, pull it down from the cloud.
+    const menuCount = getDb().prepare('SELECT COUNT(*) AS n FROM menu_items').get().n;
+    if (menuCount === 0) {
+      try { await restoreFromCloud(apiKey); } catch (e) { console.warn('[Restore] auto-pull skipped:', e.message); }
+    }
     await syncMenu(apiKey);
     await syncOrders(apiKey);
     try { await syncDailySummary(apiKey); } catch (e) { console.warn('[Sync] Summary skipped:', e.message); }
@@ -131,4 +180,4 @@ function startSyncService() {
   console.log(`[Sync] Cloud sync scheduled (every 5 min) → ${getApiUrl()}`);
 }
 
-module.exports = { startSyncService, fullSync, syncMenu, syncOrders, getApiKey };
+module.exports = { startSyncService, fullSync, syncMenu, syncOrders, getApiKey, restoreFromCloud };

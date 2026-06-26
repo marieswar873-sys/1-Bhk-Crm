@@ -1,6 +1,6 @@
 {
   "name": "1bhk-crm",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "1BHK Kitchen CRM - Restaurant Billing System",
   "main": "electron.js",
   "scripts": {
@@ -52,6 +52,7 @@
     },
     "nsis": {
       "oneClick": true,
+      "artifactName": "1BHK-CRM-Setup.${ext}",
       "installerIcon": "app-icon.ico",
       "uninstallerIcon": "app-icon.ico",
       "shortcutName": "1BHK CRM"
