@@ -7,3 +7,4 @@ client/build/
 server_out.txt
 server_err.txt
 menu-images/
+dist/

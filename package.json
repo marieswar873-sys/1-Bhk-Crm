@@ -48,12 +48,12 @@
     ],
     "win": {
       "target": "nsis",
-      "icon": "client/public/logo.png"
+      "icon": "app-icon.ico"
     },
     "nsis": {
       "oneClick": true,
-      "installerIcon": "client/public/logo.png",
-      "uninstallerIcon": "client/public/logo.png",
+      "installerIcon": "app-icon.ico",
+      "uninstallerIcon": "app-icon.ico",
       "shortcutName": "1BHK CRM"
     }
   }
