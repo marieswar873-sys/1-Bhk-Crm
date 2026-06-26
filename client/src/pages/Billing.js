@@ -33,7 +33,7 @@ export default function Billing() {
   const [menuItems, setMenuItems] = useState([]);
   const [categories, setCategories] = useState([]);
   const [tables, setTables] = useState([]);
-  const [settings, setSettings] = useState({ gst_enabled: 'true', gst_percent: '5', packing_charges: '10', outlet_name: '1BHK Kitchen', outlet_address: '', outlet_phone: '', outlet_gstin: '', outlet_fssai: '' });
+  const [settings, setSettings] = useState({ gst_enabled: 'true', gst_percent: '5', packing_charges: '10', outlet_name: '', outlet_address: '', outlet_phone: '', outlet_gstin: '', outlet_fssai: '', logo_url: '', hero_tagline: '' });
 
   const [selectedCat, setSelectedCat] = useState('all');
   const [searchQuery, setSearchQuery] = useState('');
@@ -184,10 +184,10 @@ export default function Billing() {
     printContent(`
       <!-- Logo & Header -->
       <div class="center">
-        <img src="${LOGO_URL}" class="logo" alt="Logo" />
+        <img src="${s.logo_url || LOGO_URL}" class="logo" alt="Logo" />
       </div>
-      <div class="center bold big">${s.outlet_name || '1BHK Kitchen'}</div>
-      <div class="center sub">Best Hyderabadi Kitchen</div>
+      <div class="center bold big">${s.outlet_name || 'Restaurant'}</div>
+      ${s.hero_tagline ? `<div class="center sub">${s.hero_tagline}</div>` : ''}
       ${s.outlet_address ? `<div class="center sub">${s.outlet_address}</div>` : ''}
       ${s.outlet_phone ? `<div class="center sub">Ph: ${s.outlet_phone}</div>` : ''}
       <div class="dbl-line"></div>
@@ -226,7 +226,7 @@ export default function Billing() {
       <!-- Footer -->
       <br>
       <div class="center sub">Thank you for dining with us!</div>
-      <div class="center sub">Visit again — 1BHK Kitchen</div>
+      <div class="center sub">Visit again — ${s.outlet_name || 'see you soon'}</div>
       <div class="center sub" style="margin-top:4px">--- * ---</div>
     `, true);
   };

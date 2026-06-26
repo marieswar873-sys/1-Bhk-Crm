@@ -140,6 +140,10 @@ export default function Settings() {
             <label style={labelStyle}>Default Packing Charge per item (₹)</label>
             <input type="number" value={settings.packing_charges} onChange={e => update('packing_charges', e.target.value)} style={fieldStyle} />
           </div>
+          <div style={{ gridColumn: 'span 2' }}>
+            <label style={labelStyle}>Logo URL (shown on printed bills)</label>
+            <input value={settings.logo_url || ''} onChange={e => update('logo_url', e.target.value)} placeholder="https://your-logo.png — leave blank to use the default" style={fieldStyle} />
+          </div>
         </div>
       </div>
 
