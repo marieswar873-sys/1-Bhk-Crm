@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import api from '../utils/api';
 import toast from 'react-hot-toast';
+import { buildBillEscPos, buildKotEscPos } from '../utils/escpos';
 
 const LOGO_URL = window.location.origin + '/logo.png';
 
@@ -163,6 +164,11 @@ export default function Billing() {
 
   // === KOT PRINT ===
   const printKot = (kotNumber, orderNumber, type, tableNum, items) => {
+    if (settings.kot_mode === 'escpos' && window.electronAPI?.printRaw && settings.kot_printer) {
+      const data = buildKotEscPos(kotNumber, orderNumber, type, tableNum, items, settings.paper_width);
+      window.electronAPI.printRaw(data, { deviceName: settings.kot_printer });
+      return;
+    }
     const rows = items.map(i => `<tr><td>${i.quantity} x ${i.name}</td></tr>`).join('');
     printContent(`
       <div class="center bold big">--- KOT #${kotNumber} ---</div>
@@ -179,6 +185,11 @@ export default function Billing() {
   // === BILL PRINT ===
   const printBill = (order, items) => {
     const s = settings;
+    if (s.bill_mode === 'escpos' && window.electronAPI?.printRaw && s.bill_printer) {
+      const data = buildBillEscPos(order, items, s, gstEnabled, s.paper_width);
+      window.electronAPI.printRaw(data, { deviceName: s.bill_printer });
+      return;
+    }
     const rows = items.map(i => {
       const name = i.item_name + (i.variant_name ? ` (${i.variant_name})` : '');
       const amt = (i.unit_price * i.quantity).toFixed(0);

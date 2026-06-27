@@ -4,4 +4,5 @@ const { contextBridge, ipcRenderer } = require('electron');
 contextBridge.exposeInMainWorld('electronAPI', {
   getPrinters: () => ipcRenderer.invoke('get-printers'),
   printReceipt: (html, opts) => ipcRenderer.invoke('print-receipt', { html, ...opts }),
+  printRaw: (data, opts) => ipcRenderer.invoke('print-raw', { data, ...opts }),
 });

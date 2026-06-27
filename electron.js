@@ -1,6 +1,43 @@
 const { app, BrowserWindow, Tray, Menu, nativeImage, shell, ipcMain } = require('electron');
 const path = require('path');
-const { exec } = require('child_process');
+const fs = require('fs');
+const os = require('os');
+const { exec, execFile } = require('child_process');
+
+// Send raw ESC/POS bytes straight to a printer via the Windows spooler (RAW datatype).
+// Works with any thermal printer installed in Windows — no driver rendering, no native module.
+ipcMain.handle('print-raw', async (e, { data, printer }) => {
+  return new Promise((resolve) => {
+    try {
+      const tmp = path.join(os.tmpdir(), `escpos_${Date.now()}.bin`);
+      fs.writeFileSync(tmp, Buffer.from(data, 'base64'));
+      const ps = [
+        '$ErrorActionPreference="Stop"',
+        'Add-Type -TypeDefinition @"',
+        'using System; using System.IO; using System.Runtime.InteropServices;',
+        'public class RP {',
+        ' [StructLayout(LayoutKind.Sequential, CharSet=CharSet.Unicode)] public struct DI { [MarshalAs(UnmanagedType.LPWStr)] public string n; [MarshalAs(UnmanagedType.LPWStr)] public string o; [MarshalAs(UnmanagedType.LPWStr)] public string t; }',
+        ' [DllImport("winspool.drv", CharSet=CharSet.Unicode, SetLastError=true)] public static extern bool OpenPrinter(string s, out IntPtr h, IntPtr d);',
+        ' [DllImport("winspool.drv", SetLastError=true)] public static extern bool ClosePrinter(IntPtr h);',
+        ' [DllImport("winspool.drv", CharSet=CharSet.Unicode, SetLastError=true)] public static extern int StartDocPrinter(IntPtr h, int l, ref DI di);',
+        ' [DllImport("winspool.drv", SetLastError=true)] public static extern bool EndDocPrinter(IntPtr h);',
+        ' [DllImport("winspool.drv", SetLastError=true)] public static extern bool StartPagePrinter(IntPtr h);',
+        ' [DllImport("winspool.drv", SetLastError=true)] public static extern bool EndPagePrinter(IntPtr h);',
+        ' [DllImport("winspool.drv", SetLastError=true)] public static extern bool WritePrinter(IntPtr h, byte[] b, int c, out int w);',
+        ' public static void Send(string printer, string file){ IntPtr h; if(!OpenPrinter(printer, out h, IntPtr.Zero)) throw new Exception("OpenPrinter failed"); DI di=new DI(); di.n="Receipt"; di.t="RAW"; StartDocPrinter(h,1,ref di); StartPagePrinter(h); byte[] b=File.ReadAllBytes(file); int w; WritePrinter(h,b,b.Length,out w); EndPagePrinter(h); EndDocPrinter(h); ClosePrinter(h); }',
+        '}',
+        '"@',
+        `[RP]::Send('${String(printer).replace(/'/g, "''")}', '${tmp.replace(/\\/g, '\\\\')}')`,
+      ].join('\n');
+      execFile('powershell.exe', ['-NoProfile', '-NonInteractive', '-Command', ps], { windowsHide: true }, (err) => {
+        try { fs.unlinkSync(tmp); } catch {}
+        resolve({ success: !err, error: err ? err.message : undefined });
+      });
+    } catch (err) {
+      resolve({ success: false, error: err.message });
+    }
+  });
+});
 
 // List installed printers for the Settings screen.
 ipcMain.handle('get-printers', async () => {

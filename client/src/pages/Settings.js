@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import api from '../utils/api';
 import toast from 'react-hot-toast';
+import EscPos from '../utils/escpos';
 
 export default function Settings() {
   const [settings, setSettings] = useState({});
@@ -21,8 +22,18 @@ export default function Settings() {
 
   const testPrint = (which) => {
     const printer = which === 'kot' ? settings.kot_printer : settings.bill_printer;
+    const mode = (which === 'kot' ? settings.kot_mode : settings.bill_mode) || 'graphic';
     const width = parseInt(settings.paper_width) || 80;
-    if (!window.electronAPI?.printReceipt || !printer) return toast.error('Select a printer first (desktop app only)');
+    if (!printer) return toast.error('Select a printer first');
+    if (mode === 'escpos') {
+      if (!window.electronAPI?.printRaw) return toast.error('Desktop app only');
+      const p = new EscPos(width);
+      p.align('center').bold(true).size(true).line(settings.outlet_name || 'Test').size(false).bold(false);
+      p.line('Printer test OK').line(new Date().toLocaleString()).line(`-- ${which === 'kot' ? 'KOT' : 'BILL'} ${width}mm --`).cut();
+      window.electronAPI.printRaw(p.toBase64(), { deviceName: printer });
+      return toast.success('Test sent (ESC/POS)');
+    }
+    if (!window.electronAPI?.printReceipt) return toast.error('Desktop app only');
     const doc = `<html><head><meta charset="utf-8"><style>@page{size:${width}mm auto;margin:0}body{font-family:'Courier New',monospace;width:${width}mm;text-align:center;padding:4mm;color:#000}</style></head><body>`
       + `<h3>${settings.outlet_name || 'Test'}</h3><p>Printer test OK &#10003;</p><p>${new Date().toLocaleString()}</p><p>--- ${which === 'kot' ? 'KOT' : 'BILL'} &middot; ${width}mm ---</p></body></html>`;
     window.electronAPI.printReceipt(doc, { deviceName: printer });
@@ -324,6 +335,22 @@ export default function Settings() {
                 </div>
               </div>
             </div>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16, marginTop: 16 }}>
+              <div>
+                <label style={labelStyle}>Bill Print Mode</label>
+                <select value={settings.bill_mode || 'graphic'} onChange={e => update('bill_mode', e.target.value)} style={fieldStyle}>
+                  <option value="graphic">Graphic (logo, needs good driver)</option>
+                  <option value="escpos">Thermal ESC/POS (works on any printer)</option>
+                </select>
+              </div>
+              <div>
+                <label style={labelStyle}>KOT Print Mode</label>
+                <select value={settings.kot_mode || 'graphic'} onChange={e => update('kot_mode', e.target.value)} style={fieldStyle}>
+                  <option value="graphic">Graphic</option>
+                  <option value="escpos">Thermal ESC/POS (works on any printer)</option>
+                </select>
+              </div>
+            </div>
             <div style={{ marginTop: 16 }}>
               <label style={labelStyle}>Paper Width</label>
               <div style={{ display: 'flex', gap: 20 }}>
@@ -334,7 +361,7 @@ export default function Settings() {
                 ))}
               </div>
             </div>
-            <div style={{ fontSize: 11, color: '#888', marginTop: 10 }}>Prints silently — no popup. Set a printer to "Ask each time" to use the Windows print dialog instead. Click <b>Test</b> to print a sample, then <b>Save All Settings</b>.</div>
+            <div style={{ fontSize: 11, color: '#888', marginTop: 10 }}>Prints silently — no popup. <b>Graphic</b> prints the logo (needs a good driver). <b>Thermal ESC/POS</b> works on any thermal printer (no logo, plain text — most reliable for local/non-branded printers). If a printer prints garbled in Graphic mode, switch it to ESC/POS. Click <b>Test</b>, then <b>Save All Settings</b>.</div>
           </>
         ) : (
           <div style={{ fontSize: 13, color: '#888' }}>Printer selection works in the installed desktop app. In a browser, printing uses the system dialog.</div>
