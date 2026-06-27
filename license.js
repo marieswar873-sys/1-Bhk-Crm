@@ -35,7 +35,20 @@ function verifyCode(code) {
 }
 
 let licenseFile = null;
-function init(userDataDir) { licenseFile = path.join(userDataDir, 'license.dat'); }
+let cloudFile = null;
+function init(userDataDir) {
+  licenseFile = path.join(userDataDir, 'license.dat');
+  cloudFile = path.join(userDataDir, 'cloud.dat');
+}
+
+// Cloud subscription activation: stores the API key + last-known status.
+function setCloud(obj) {
+  try { fs.writeFileSync(cloudFile, JSON.stringify(obj || {})); return true; } catch { return false; }
+}
+function getCloud() {
+  try { return cloudFile && fs.existsSync(cloudFile) ? JSON.parse(fs.readFileSync(cloudFile, 'utf8')) : null; } catch { return null; }
+}
+function clearCloud() { try { fs.existsSync(cloudFile) && fs.unlinkSync(cloudFile); } catch {} }
 
 function isLicensed() {
   try {
@@ -49,4 +62,4 @@ function activate(code) {
   try { fs.writeFileSync(licenseFile, String(code).trim()); return true; } catch { return false; }
 }
 
-module.exports = { init, machineId, isLicensed, activate };
+module.exports = { init, machineId, isLicensed, activate, setCloud, getCloud, clearCloud };

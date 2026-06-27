@@ -5,12 +5,13 @@ const os = require('os');
 const { exec, execFile } = require('child_process');
 const license = require('./license');
 
-// Licensing IPC (machine-locked, offline). The renderer gates the app on this.
-ipcMain.handle('license-get', () => ({ machineId: license.machineId(), licensed: license.isLicensed() }));
+// Licensing IPC. One-time = machine-locked code; cloud = API key (subscription).
+ipcMain.handle('license-get', () => ({ machineId: license.machineId(), licensed: license.isLicensed(), cloud: license.getCloud() }));
 ipcMain.handle('license-activate', (e, code) => {
   const ok = license.activate(code);
   return { ok, licensed: license.isLicensed(), machineId: license.machineId() };
 });
+ipcMain.handle('license-set-cloud', (e, obj) => { license.setCloud(obj); return true; });
 
 // Send raw ESC/POS bytes straight to a printer via the Windows spooler (RAW datatype).
 // Works with any thermal printer installed in Windows — no driver rendering, no native module.
