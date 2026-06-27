@@ -4,21 +4,32 @@ import toast from 'react-hot-toast';
 
 const LOGO_URL = window.location.origin + '/logo.png';
 
-function printContent(html, waitForImages) {
-  const win = window.open('', '_blank', 'width=320,height=700');
-  win.document.write(`<html><head><style>
-    body { font-family: 'Courier New', monospace; font-size: 12px; width: 72mm; margin: 0 auto; padding: 4mm; color: #000; }
+function printContent(html, opts = {}) {
+  // opts: { printer, width (58|80), waitForImages }
+  const width = parseInt(opts.width) || 80;
+  const printer = opts.printer || '';
+  const doc = `<html><head><meta charset="utf-8"><style>
+    @page { size: ${width}mm auto; margin: 0; }
+    body { font-family: 'Courier New', monospace; font-size: 12px; width: ${width}mm; margin: 0 auto; padding: 3mm; color: #000; }
     .center { text-align: center; } .bold { font-weight: bold; } .line { border-top: 1px dashed #000; margin: 6px 0; }
     .dbl-line { border-top: 2px solid #000; margin: 6px 0; }
     .row { display: flex; justify-content: space-between; } .big { font-size: 16px; } .xl { font-size: 20px; }
     table { width: 100%; border-collapse: collapse; } td { padding: 2px 0; font-size: 12px; }
     .logo { width: 60px; height: 60px; margin: 0 auto 4px; display: block; }
     .sub { font-size: 10px; color: #555; } .detail { font-size: 11px; }
-    @media print { body { margin: 0; } @page { margin: 2mm; } }
-  </style></head><body>${html}</body></html>`);
-  win.document.close();
-  const delay = waitForImages ? 800 : 300;
-  setTimeout(() => { win.print(); win.close(); }, delay);
+  </style></head><body>${html}</body></html>`;
+
+  // Electron silent printing to the chosen printer (no dialog); fall back to the
+  // browser print dialog when running in a plain browser or no printer is set.
+  if (typeof window !== 'undefined' && window.electronAPI && printer) {
+    window.electronAPI.printReceipt(doc, { deviceName: printer });
+  } else {
+    const win = window.open('', '_blank', 'width=320,height=700');
+    win.document.write(doc);
+    win.document.close();
+    const delay = opts.waitForImages ? 800 : 300;
+    setTimeout(() => { win.print(); win.close(); }, delay);
+  }
 }
 
 function formatTime(dateStr) {
@@ -162,7 +173,7 @@ export default function Billing() {
       <div class="line"></div>
       <table>${rows}</table>
       <div class="line"></div>
-    `);
+    `, { printer: settings.kot_printer, width: settings.paper_width });
   };
 
   // === BILL PRINT ===
@@ -228,7 +239,7 @@ export default function Billing() {
       <div class="center sub">Thank you for dining with us!</div>
       <div class="center sub">Visit again — ${s.outlet_name || 'see you soon'}</div>
       <div class="center sub" style="margin-top:4px">--- * ---</div>
-    `, true);
+    `, { printer: s.bill_printer, width: s.paper_width, waitForImages: true });
   };
 
   // === ACTIONS ===

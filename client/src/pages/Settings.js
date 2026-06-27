@@ -10,10 +10,24 @@ export default function Settings() {
   const [showKey, setShowKey] = useState(false);
   const [syncing, setSyncing] = useState(false);
   const [restoring, setRestoring] = useState(false);
+  const [printers, setPrinters] = useState([]);
 
   useEffect(() => {
     api.get('/settings').then(r => { setSettings(r.data); setLoading(false); });
+    if (window.electronAPI?.getPrinters) {
+      window.electronAPI.getPrinters().then(list => setPrinters(list || [])).catch(() => {});
+    }
   }, []);
+
+  const testPrint = (which) => {
+    const printer = which === 'kot' ? settings.kot_printer : settings.bill_printer;
+    const width = parseInt(settings.paper_width) || 80;
+    if (!window.electronAPI?.printReceipt || !printer) return toast.error('Select a printer first (desktop app only)');
+    const doc = `<html><head><meta charset="utf-8"><style>@page{size:${width}mm auto;margin:0}body{font-family:'Courier New',monospace;width:${width}mm;text-align:center;padding:4mm;color:#000}</style></head><body>`
+      + `<h3>${settings.outlet_name || 'Test'}</h3><p>Printer test OK &#10003;</p><p>${new Date().toLocaleString()}</p><p>--- ${which === 'kot' ? 'KOT' : 'BILL'} &middot; ${width}mm ---</p></body></html>`;
+    window.electronAPI.printReceipt(doc, { deviceName: printer });
+    toast.success('Test page sent');
+  };
 
   const save = async () => {
     try {
@@ -280,6 +294,51 @@ export default function Settings() {
         }}>
           {sendingReport ? 'Sending...' : '📧 Send Test Report Now'}
         </button>
+      </div>
+
+      {/* Printers */}
+      <div style={{ background: '#fff', borderRadius: 12, padding: 24, marginBottom: 16, boxShadow: '0 2px 8px rgba(0,0,0,0.06)' }}>
+        <h3 style={{ margin: '0 0 4px', fontSize: 16, color: '#1a1a2e' }}>🖨️ Printers</h3>
+        <div style={{ fontSize: 12, color: '#888', marginBottom: 16 }}>Choose which printer prints bills and KOTs. Pick the <b>same</b> one for both if you only have a single printer.</div>
+        {window.electronAPI ? (
+          <>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
+              <div>
+                <label style={labelStyle}>Bill / Receipt Printer</label>
+                <div style={{ display: 'flex', gap: 8 }}>
+                  <select value={settings.bill_printer || ''} onChange={e => update('bill_printer', e.target.value)} style={{ ...fieldStyle, flex: 1 }}>
+                    <option value="">Ask each time (system dialog)</option>
+                    {printers.map(p => <option key={p.name} value={p.name}>{p.displayName || p.name}</option>)}
+                  </select>
+                  <button onClick={() => testPrint('bill')} style={{ padding: '8px 12px', background: '#eee', border: 'none', borderRadius: 8, cursor: 'pointer', fontSize: 12, whiteSpace: 'nowrap' }}>Test</button>
+                </div>
+              </div>
+              <div>
+                <label style={labelStyle}>Kitchen (KOT) Printer</label>
+                <div style={{ display: 'flex', gap: 8 }}>
+                  <select value={settings.kot_printer || ''} onChange={e => update('kot_printer', e.target.value)} style={{ ...fieldStyle, flex: 1 }}>
+                    <option value="">Ask each time (system dialog)</option>
+                    {printers.map(p => <option key={p.name} value={p.name}>{p.displayName || p.name}</option>)}
+                  </select>
+                  <button onClick={() => testPrint('kot')} style={{ padding: '8px 12px', background: '#eee', border: 'none', borderRadius: 8, cursor: 'pointer', fontSize: 12, whiteSpace: 'nowrap' }}>Test</button>
+                </div>
+              </div>
+            </div>
+            <div style={{ marginTop: 16 }}>
+              <label style={labelStyle}>Paper Width</label>
+              <div style={{ display: 'flex', gap: 20 }}>
+                {['80', '58'].map(w => (
+                  <label key={w} style={{ display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer', fontSize: 14 }}>
+                    <input type="radio" name="paper_width" checked={(settings.paper_width || '80') === w} onChange={() => update('paper_width', w)} /> {w}mm
+                  </label>
+                ))}
+              </div>
+            </div>
+            <div style={{ fontSize: 11, color: '#888', marginTop: 10 }}>Prints silently — no popup. Set a printer to "Ask each time" to use the Windows print dialog instead. Click <b>Test</b> to print a sample, then <b>Save All Settings</b>.</div>
+          </>
+        ) : (
+          <div style={{ fontSize: 13, color: '#888' }}>Printer selection works in the installed desktop app. In a browser, printing uses the system dialog.</div>
+        )}
       </div>
 
       {/* Cloud Sync */}

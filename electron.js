@@ -1,6 +1,29 @@
-const { app, BrowserWindow, Tray, Menu, nativeImage, shell } = require('electron');
+const { app, BrowserWindow, Tray, Menu, nativeImage, shell, ipcMain } = require('electron');
 const path = require('path');
 const { exec } = require('child_process');
+
+// List installed printers for the Settings screen.
+ipcMain.handle('get-printers', async () => {
+  try { return await mainWindow.webContents.getPrintersAsync(); }
+  catch { return []; }
+});
+
+// Print a receipt/KOT silently to a chosen printer (no dialog).
+ipcMain.handle('print-receipt', async (e, { html, deviceName }) => {
+  return new Promise((resolve) => {
+    const pw = new BrowserWindow({ show: false, webPreferences: { sandbox: false } });
+    pw.loadURL('data:text/html;charset=utf-8,' + encodeURIComponent(html));
+    pw.webContents.once('did-finish-load', () => {
+      // small delay so the logo image decodes before printing
+      setTimeout(() => {
+        pw.webContents.print(
+          { silent: true, deviceName: deviceName || undefined, margins: { marginType: 'none' }, printBackground: true },
+          (success, reason) => { try { pw.close(); } catch {} resolve({ success, reason }); }
+        );
+      }, 400);
+    });
+  });
+});
 
 let mainWindow;
 let tray;
@@ -22,6 +45,7 @@ function createWindow() {
     webPreferences: {
       nodeIntegration: false,
       contextIsolation: true,
+      preload: path.join(__dirname, 'preload.js'),
     },
     autoHideMenuBar: true,
   });
