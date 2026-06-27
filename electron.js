@@ -6,7 +6,8 @@ const { exec, execFile } = require('child_process');
 
 // Send raw ESC/POS bytes straight to a printer via the Windows spooler (RAW datatype).
 // Works with any thermal printer installed in Windows — no driver rendering, no native module.
-ipcMain.handle('print-raw', async (e, { data, printer }) => {
+ipcMain.handle('print-raw', async (e, { data, deviceName }) => {
+  const printer = deviceName;
   return new Promise((resolve) => {
     try {
       const tmp = path.join(os.tmpdir(), `escpos_${Date.now()}.bin`);
