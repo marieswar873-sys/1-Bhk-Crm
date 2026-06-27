@@ -98,10 +98,10 @@ export function buildBillEscPos(order, items, s, gstEnabled, width, logoRaster) 
   p.hr();
   let totalItems = 0;
   for (const i of items) {
-    const name = i.item_name + (i.variant_name ? ` (${i.variant_name})` : '');
     totalItems += i.quantity;
-    p.wrap(name);
-    p.row(`  ${i.quantity} x ${rs(i.unit_price)}`, rs(i.unit_price * i.quantity));
+    // Bill shows item name WITHOUT the variant/size (e.g. no "(650 ml)") + quantity on its own line.
+    p.wrap(i.item_name);
+    p.row(`  Qty ${i.quantity} x ${rs(i.unit_price)}`, rs(i.unit_price * i.quantity));
   }
   p.hr();
   p.row(`Subtotal (${totalItems})`, rs(order.subtotal));
