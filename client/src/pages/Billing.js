@@ -173,7 +173,7 @@ export default function Billing() {
 
   // === KOT PRINT ===
   const printKot = (kotNumber, orderNumber, type, tableNum, items) => {
-    if (settings.kot_mode === 'escpos' && window.electronAPI?.printRaw && settings.kot_printer) {
+    if (window.electronAPI?.printRaw && settings.kot_printer) {
       const data = buildKotEscPos(kotNumber, orderNumber, type, tableNum, items, settings.paper_width);
       window.electronAPI.printRaw(data, { deviceName: settings.kot_printer });
       return;
@@ -194,7 +194,9 @@ export default function Billing() {
   // === BILL PRINT ===
   const printBill = (order, items) => {
     const s = settings;
-    if (s.bill_mode === 'escpos' && window.electronAPI?.printRaw && s.bill_printer) {
+    // Desktop with a printer selected: ALWAYS use ESC/POS (raw). Never send HTML to a
+    // thermal printer — generic drivers error on HTML and jam the whole print queue.
+    if (window.electronAPI?.printRaw && s.bill_printer) {
       const data = buildBillEscPos(order, items, s, gstEnabled, s.paper_width, logoRaster);
       window.electronAPI.printRaw(data, { deviceName: s.bill_printer });
       return;

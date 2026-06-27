@@ -1,6 +1,6 @@
 {
   "name": "1bhk-crm",
-  "version": "1.0.7",
+  "version": "1.0.8",
   "description": "1BHK Kitchen CRM - Restaurant Billing System",
   "main": "electron.js",
   "scripts": {

@@ -22,22 +22,15 @@ export default function Settings() {
 
   const testPrint = (which) => {
     const printer = which === 'kot' ? settings.kot_printer : settings.bill_printer;
-    const mode = (which === 'kot' ? settings.kot_mode : settings.bill_mode) || 'graphic';
     const width = parseInt(settings.paper_width) || 80;
     if (!printer) return toast.error('Select a printer first');
-    if (mode === 'escpos') {
-      if (!window.electronAPI?.printRaw) return toast.error('Desktop app only');
-      const p = new EscPos(width);
-      p.align('center').bold(true).size(true).line(settings.outlet_name || 'Test').size(false).bold(false);
-      p.line('Printer test OK').line(new Date().toLocaleString()).line(`-- ${which === 'kot' ? 'KOT' : 'BILL'} ${width}mm --`).cut();
-      window.electronAPI.printRaw(p.toBase64(), { deviceName: printer });
-      return toast.success('Test sent (ESC/POS)');
-    }
-    if (!window.electronAPI?.printReceipt) return toast.error('Desktop app only');
-    const doc = `<html><head><meta charset="utf-8"><style>@page{size:${width}mm auto;margin:0}body{font-family:'Courier New',monospace;width:${width}mm;text-align:center;padding:4mm;color:#000}</style></head><body>`
-      + `<h3>${settings.outlet_name || 'Test'}</h3><p>Printer test OK &#10003;</p><p>${new Date().toLocaleString()}</p><p>--- ${which === 'kot' ? 'KOT' : 'BILL'} &middot; ${width}mm ---</p></body></html>`;
-    window.electronAPI.printReceipt(doc, { deviceName: printer });
-    toast.success('Test page sent');
+    if (!window.electronAPI?.printRaw) return toast.error('Desktop app only');
+    // Always ESC/POS to a real printer (HTML jams generic thermal drivers).
+    const p = new EscPos(width);
+    p.align('center').bold(true).size(true).line(settings.outlet_name || 'Test').size(false).bold(false);
+    p.line('Printer test OK').line(new Date().toLocaleString()).line(`-- ${which === 'kot' ? 'KOT' : 'BILL'} ${width}mm --`).cut();
+    window.electronAPI.printRaw(p.toBase64(), { deviceName: printer });
+    toast.success('Test sent (ESC/POS)');
   };
 
   const save = async () => {
