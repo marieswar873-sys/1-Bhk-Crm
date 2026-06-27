@@ -123,4 +123,9 @@ function initDb() {
   return db;
 }
 
-module.exports = { getDb, initDb };
+// Safe online backup (handles WAL correctly) to a destination .db path.
+function backupTo(destPath) {
+  return getDb().backup(destPath);
+}
+
+module.exports = { getDb, initDb, backupTo };

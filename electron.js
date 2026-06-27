@@ -105,6 +105,25 @@ function createWindow() {
   mainWindow.on('closed', () => { mainWindow = null; });
 }
 
+// Daily local backup of the database to Documents\1BHK-CRM-Backups (safe even if the
+// laptop's disk later fails). Keeps the last 14 days. Runs once per day on startup.
+async function dailyBackup() {
+  try {
+    const dbPath = process.env.DB_PATH;
+    if (!dbPath || !fs.existsSync(dbPath)) return;
+    const dir = path.join(app.getPath('documents'), '1BHK-CRM-Backups');
+    fs.mkdirSync(dir, { recursive: true });
+    const today = new Date().toISOString().slice(0, 10);
+    const dest = path.join(dir, `restaurant-${today}.db`);
+    if (fs.existsSync(dest)) return; // already backed up today
+    const { backupTo } = require('./server/db/schema');
+    await backupTo(dest);
+    console.log('[Backup] Saved', dest);
+    const files = fs.readdirSync(dir).filter(f => /^restaurant-.*\.db$/.test(f)).sort();
+    while (files.length > 14) { try { fs.unlinkSync(path.join(dir, files.shift())); } catch {} }
+  } catch (e) { console.error('[Backup]', e.message); }
+}
+
 app.whenReady().then(() => {
   // Set DB path to user data folder
   process.env.DB_PATH = path.join(app.getPath('userData'), 'restaurant.db');
@@ -116,8 +135,25 @@ app.whenReady().then(() => {
   // Start the Express server
   require('./server/index.js');
 
+  // Daily backup once the DB is initialized
+  setTimeout(dailyBackup, 4000);
+
   // Create window after server starts
   createWindow();
+});
+
+// Sync-on-close: flush any pending orders to the cloud before quitting, so the last
+// few minutes of sales are never stuck only on the laptop. Capped at 8s so it can't hang.
+let didFinalSync = false;
+app.on('before-quit', async (e) => {
+  if (didFinalSync) return;
+  e.preventDefault();
+  didFinalSync = true;
+  try {
+    const { fullSync } = require('./server/services/supabaseSync');
+    await Promise.race([fullSync(), new Promise(r => setTimeout(r, 8000))]);
+  } catch {}
+  app.quit();
 });
 
 app.on('window-all-closed', () => {
