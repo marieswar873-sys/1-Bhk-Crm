@@ -8,3 +8,4 @@ server_out.txt
 server_err.txt
 menu-images/
 dist/
+license-tool/PRIVATE-KEY-KEEP-SECRET.pem

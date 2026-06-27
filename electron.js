@@ -3,6 +3,14 @@ const path = require('path');
 const fs = require('fs');
 const os = require('os');
 const { exec, execFile } = require('child_process');
+const license = require('./license');
+
+// Licensing IPC (machine-locked, offline). The renderer gates the app on this.
+ipcMain.handle('license-get', () => ({ machineId: license.machineId(), licensed: license.isLicensed() }));
+ipcMain.handle('license-activate', (e, code) => {
+  const ok = license.activate(code);
+  return { ok, licensed: license.isLicensed(), machineId: license.machineId() };
+});
 
 // Send raw ESC/POS bytes straight to a printer via the Windows spooler (RAW datatype).
 // Works with any thermal printer installed in Windows — no driver rendering, no native module.
@@ -128,6 +136,9 @@ app.whenReady().then(() => {
   // Set DB path to user data folder
   process.env.DB_PATH = path.join(app.getPath('userData'), 'restaurant.db');
   process.env.PORT = String(PORT);
+
+  // Initialise licensing (license file lives next to the DB)
+  license.init(app.getPath('userData'));
 
   // Load .env
   try { require('dotenv').config({ path: path.join(__dirname, '.env') }); } catch {}
