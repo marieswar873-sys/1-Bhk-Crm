@@ -5,10 +5,12 @@ const ESC = 0x1b, GS = 0x1d;
 export default class EscPos {
   constructor(width = 80) {
     this.cols = parseInt(width) === 58 ? 32 : 48;
+    this.colsB = parseInt(width) === 58 ? 42 : 64; // chars per line in the smaller Font B
     this.dots = parseInt(width) === 58 ? 384 : 576; // printable dots
     this.bytes = [];
     this.cmd(ESC, 0x40);
   }
+  fontB(on) { return this.cmd(ESC, 0x4D, on ? 1 : 0); } // ESC M: 1=Font B (small), 0=Font A
   cmd(...b) { this.bytes.push(...b); return this; }
   raw(arr) { for (const b of arr) this.bytes.push(b & 0xff); return this; }
   _enc(s) {
@@ -41,6 +43,18 @@ export default class EscPos {
 }
 
 const rs = (n) => 'Rs.' + (Math.round((parseFloat(n) || 0) * 100) / 100).toFixed(2);
+
+// SQLite stores created_at as UTC "YYYY-MM-DD HH:MM:SS" (no tz marker). Parse it as UTC
+// and format to the laptop's local time (IST) so the bill time matches the KOT.
+function fmtDate(v) {
+  let d;
+  if (v) {
+    const s = String(v);
+    d = (/T/.test(s) || /[Z+]/.test(s)) ? new Date(s) : new Date(s.replace(' ', 'T') + 'Z');
+    if (isNaN(d.getTime())) d = new Date(v);
+  } else { d = new Date(); }
+  return d.toLocaleString('en-IN', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit', hour12: true });
+}
 
 // Convert a logo (data URI / URL) to an ESC/POS GS v 0 raster byte array, sized to the printer.
 export function logoToRaster(src, maxDots = 384) {
@@ -90,19 +104,29 @@ export function buildBillEscPos(order, items, s, gstEnabled, width, logoRaster) 
   if (s.outlet_fssai) p.line('FSSAI: ' + s.outlet_fssai);
   p.align('left').hr();
   p.line('Bill : ' + order.order_number);
-  p.line('Date : ' + new Date(order.created_at || Date.now()).toLocaleString('en-IN', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' }));
+  p.line('Date : ' + fmtDate(order.created_at));
   p.line('Type : ' + (order.order_type === 'dine_in' ? 'Dine-in' : 'Takeaway'));
   if (order.customer_name) p.line('Cust : ' + order.customer_name);
   p.hr();
-  p.bold(true).row('Item', 'Amount').bold(false);
-  p.hr();
+  // Item table in the smaller Font B so long names fit on one line (cb = chars/line in Font B).
+  p.fontB(true);
+  const cb = p.colsB, amtW = 12, qtyW = 5, itemW = cb - amtW - qtyW;
+  p.bold(true).line('Item'.padEnd(itemW) + 'Qty'.padStart(qtyW) + 'Amount'.padStart(amtW)).bold(false);
+  p.line('-'.repeat(cb));
   let totalItems = 0;
   for (const i of items) {
     totalItems += i.quantity;
-    // Bill shows item name WITHOUT the variant/size (e.g. no "(650 ml)") + quantity on its own line.
-    p.wrap(i.item_name);
-    p.row(`  Qty ${i.quantity} x ${rs(i.unit_price)}`, rs(i.unit_price * i.quantity));
+    const qtyAmt = String(i.quantity).padStart(qtyW) + rs(i.unit_price * i.quantity).padStart(amtW);
+    const name = i.item_name || '';
+    if (name.length <= itemW) {
+      p.line(name.padEnd(itemW) + qtyAmt);
+    } else {
+      p.line(name.slice(0, itemW) + qtyAmt);
+      let rest = name.slice(itemW);
+      while (rest.length) { p.line(rest.slice(0, cb)); rest = rest.slice(cb); }
+    }
   }
+  p.fontB(false);
   p.hr();
   p.row(`Subtotal (${totalItems})`, rs(order.subtotal));
   if (gstEnabled) {
