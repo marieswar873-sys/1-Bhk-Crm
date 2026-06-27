@@ -113,8 +113,15 @@ export function buildBillEscPos(order, items, s, gstEnabled, width, logoRaster) 
   const cb = p.colsB, amtW = 12, qtyW = 5, itemW = cb - amtW - qtyW;
   p.bold(true).line('Item'.padEnd(itemW) + 'Qty'.padStart(qtyW) + 'Amount'.padStart(amtW)).bold(false);
   p.line('-'.repeat(cb));
-  let totalItems = 0;
+  // Combine duplicate lines (same item + price) into one row with summed quantity.
+  const grouped = {};
   for (const i of items) {
+    const key = (i.item_name || '') + '|' + i.unit_price;
+    if (!grouped[key]) grouped[key] = { item_name: i.item_name, unit_price: i.unit_price, quantity: 0 };
+    grouped[key].quantity += i.quantity;
+  }
+  let totalItems = 0;
+  for (const i of Object.values(grouped)) {
     totalItems += i.quantity;
     const qtyAmt = String(i.quantity).padStart(qtyW) + rs(i.unit_price * i.quantity).padStart(amtW);
     const name = i.item_name || '';
