@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import api from '../utils/api';
 import toast from 'react-hot-toast';
-import { buildBillEscPos, buildKotEscPos } from '../utils/escpos';
+import { buildBillEscPos, buildKotEscPos, logoToRaster } from '../utils/escpos';
 
 const LOGO_URL = window.location.origin + '/logo.png';
 
@@ -74,6 +74,15 @@ export default function Billing() {
   const loadActiveOrders = useCallback(() => {
     api.get('/orders/active').then(r => setActiveOrders(r.data)).catch(() => {});
   }, []);
+
+  const [logoRaster, setLogoRaster] = useState(null);
+  useEffect(() => {
+    let active = true;
+    if (settings.logo_url) {
+      logoToRaster(settings.logo_url, parseInt(settings.paper_width) === 58 ? 384 : 576).then(r => { if (active) setLogoRaster(r); });
+    } else { setLogoRaster(null); }
+    return () => { active = false; };
+  }, [settings.logo_url, settings.paper_width]);
 
   useEffect(() => { loadMenu(); loadActiveOrders(); }, [loadActiveOrders]);
   useEffect(() => { const i = setInterval(loadActiveOrders, 30000); return () => clearInterval(i); }, [loadActiveOrders]);
@@ -186,7 +195,7 @@ export default function Billing() {
   const printBill = (order, items) => {
     const s = settings;
     if (s.bill_mode === 'escpos' && window.electronAPI?.printRaw && s.bill_printer) {
-      const data = buildBillEscPos(order, items, s, gstEnabled, s.paper_width);
+      const data = buildBillEscPos(order, items, s, gstEnabled, s.paper_width, logoRaster);
       window.electronAPI.printRaw(data, { deviceName: s.bill_printer });
       return;
     }
