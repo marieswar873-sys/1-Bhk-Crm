@@ -29,7 +29,7 @@ function generateToken(user) {
   return jwt.sign(
     { id: user.id, email: user.email, role: user.role, outlet_id: user.outlet_id },
     JWT_SECRET,
-    { expiresIn: '24h' }
+    { expiresIn: '3650d' } // billing laptop stays logged in (no auto-logout)
   );
 }
 
