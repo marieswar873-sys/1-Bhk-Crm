@@ -11,7 +11,8 @@
     "electron": "electron .",
     "electron-dev": "npm run build && electron .",
     "dist": "npm run build && electron-builder",
-    "dist:win": "npm run build && electron-builder --win"
+    "dist:win": "npm run build && electron-builder --win",
+    "dist:tenant": "node scripts/build-tenant.js"
   },
   "keywords": [],
   "author": "1BHK Kitchen",
