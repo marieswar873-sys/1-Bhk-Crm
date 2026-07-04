@@ -13,6 +13,33 @@ ipcMain.handle('license-activate', (e, code) => {
 });
 ipcMain.handle('license-set-cloud', (e, obj) => { license.setCloud(obj); return true; });
 
+// Write a single key to the local SQLite settings table (first outlet).
+ipcMain.handle('setting-set', (e, { key, value }) => {
+  try {
+    const { getDb } = require('./server/db/schema');
+    const { v4: uuid } = require('uuid');
+    const db = getDb();
+    const outlet = db.prepare('SELECT id FROM outlets LIMIT 1').get();
+    if (!outlet) return false;
+    db.prepare('INSERT INTO settings (id,outlet_id,key,value) VALUES (?,?,?,?) ON CONFLICT(outlet_id,key) DO UPDATE SET value=excluded.value')
+      .run(uuid(), outlet.id, key, String(value));
+    // Update window title immediately if setting the outlet name
+    if (key === 'outlet_name' && mainWindow) {
+      mainWindow.setTitle(`${value} — CRM`);
+    }
+    return true;
+  } catch (e) {
+    console.error('[setting-set]', e.message);
+    return false;
+  }
+});
+
+// Expose basic app info to renderer
+ipcMain.handle('app-info', () => ({
+  version: app.getVersion(),
+  name: app.getName(),
+}));
+
 // Send raw ESC/POS bytes straight to a printer via the Windows spooler (RAW datatype).
 // Works with any thermal printer installed in Windows — no driver rendering, no native module.
 ipcMain.handle('print-raw', async (e, { data, deviceName }) => {
@@ -81,12 +108,24 @@ function createWindow() {
   const iconPath = path.join(__dirname, 'client', 'public', 'logo.png');
   const appIcon = nativeImage.createFromPath(iconPath);
 
+  // Resolve app title from saved settings (outlet_name key)
+  let appTitle = 'Restaurant CRM';
+  try {
+    const { getDb } = require('./server/db/schema');
+    const db = getDb();
+    const outlet = db.prepare('SELECT id FROM outlets LIMIT 1').get();
+    if (outlet) {
+      const row = db.prepare("SELECT value FROM settings WHERE outlet_id=? AND key='outlet_name'").get(outlet.id);
+      if (row && row.value && row.value !== '1BHK Kitchen') appTitle = `${row.value} — CRM`;
+    }
+  } catch {}
+
   mainWindow = new BrowserWindow({
     width: 1366,
     height: 768,
     minWidth: 800,
     minHeight: 600,
-    title: '1BHK CRM',
+    title: appTitle,
     icon: appIcon,
     show: false,
     webPreferences: {

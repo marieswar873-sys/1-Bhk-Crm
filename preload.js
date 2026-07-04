@@ -8,4 +8,6 @@ contextBridge.exposeInMainWorld('electronAPI', {
   getLicense: () => ipcRenderer.invoke('license-get'),
   activateLicense: (code) => ipcRenderer.invoke('license-activate', code),
   setCloudLicense: (obj) => ipcRenderer.invoke('license-set-cloud', obj),
+  setSetting: (key, value) => ipcRenderer.invoke('setting-set', { key, value }),
+  getAppInfo: () => ipcRenderer.invoke('app-info'),
 });

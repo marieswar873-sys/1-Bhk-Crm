@@ -46,12 +46,26 @@ export default function LicenseGate({ children }) {
   const activateCloud = async () => {
     if (!apiKey.trim()) return;
     setBusy(true); setErr('');
-    const r = await validateCloud(apiKey.trim());
+    try {
+      const res = await fetch(`${API}/api/sync/validate`, { headers: { 'X-API-Key': apiKey.trim() } });
+      if (res.status === 401) { setBusy(false); setErr('Invalid API key — check it and try again.'); return; }
+      const data = await res.json();
+      if (data.active) {
+        window.electronAPI.setCloudLicense({ key: apiKey.trim(), status: 'active', ts: Date.now() });
+        // Auto-save restaurant name so app shell can brand itself immediately
+        if (data.name && window.electronAPI?.setSetting) {
+          await window.electronAPI.setSetting('outlet_name', data.name).catch(() => {});
+        }
+        setStatus('ok');
+      } else if (data.status === 'suspended') {
+        setErr('This subscription is suspended. Please contact your provider.');
+      } else {
+        setErr('Could not activate. Please try again.');
+      }
+    } catch {
+      setErr('Could not reach the server. Check your internet and try again.');
+    }
     setBusy(false);
-    if (r === 'active') { window.electronAPI.setCloudLicense({ key: apiKey.trim(), status: 'active', ts: Date.now() }); setStatus('ok'); }
-    else if (r === 'suspended') setErr('This subscription is suspended. Please contact your provider.');
-    else if (r === 'invalid') setErr('Invalid API key — check it and try again.');
-    else setErr('Could not reach the server. Check your internet and try again.');
   };
 
   const activateOneTime = async () => {
@@ -92,8 +106,8 @@ export default function LicenseGate({ children }) {
   return (
     <div style={center}>
       <div style={card}>
-        <h2 style={{ margin: '0 0 4px', color: '#1a1a2e' }}>Activate 1BHK CRM</h2>
-        <p style={{ margin: '0 0 18px', color: '#888', fontSize: 14 }}>This app needs to be activated to run on this computer.</p>
+        <h2 style={{ margin: '0 0 4px', color: '#1a1a2e' }}>Activate Restaurant CRM</h2>
+        <p style={{ margin: '0 0 18px', color: '#888', fontSize: 14 }}>Enter the Connection Key from your CRM download page to activate this app.</p>
 
         <div style={{ display: 'flex', gap: 8, marginBottom: 20 }}>
           {tabBtn('cloud', '☁️ Cloud Subscription')}
