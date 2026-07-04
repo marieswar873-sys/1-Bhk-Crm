@@ -1,0 +1,119 @@
+name: Build Tenant CRM Installer
+
+on:
+  # Triggered by the SaaS API when a new restaurant is created
+  repository_dispatch:
+    types: [build-tenant]
+
+  # Manual trigger from GitHub Actions UI (for testing or rebuilds)
+  workflow_dispatch:
+    inputs:
+      tenant_name:
+        description: 'Restaurant name (e.g. Sadhana Foods)'
+        required: true
+      tenant_slug:
+        description: 'Tenant slug (e.g. sadhana)'
+        required: true
+      tenant_id:
+        description: 'Tenant UUID from Supabase'
+        required: false
+      icon_url:
+        description: 'Logo image URL (optional)'
+        required: false
+        default: ''
+      callback_url:
+        description: 'API callback URL to store download URL'
+        required: false
+        default: ''
+
+jobs:
+  build:
+    runs-on: windows-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install root dependencies
+        run: npm ci
+
+      - name: Install client dependencies
+        run: cd client && npm ci
+
+      - name: Resolve inputs (dispatch vs manual)
+        id: vars
+        shell: bash
+        run: |
+          if [ "${{ github.event_name }}" = "repository_dispatch" ]; then
+            echo "name=${{ github.event.client_payload.tenant_name }}" >> $GITHUB_OUTPUT
+            echo "slug=${{ github.event.client_payload.tenant_slug }}" >> $GITHUB_OUTPUT
+            echo "id=${{ github.event.client_payload.tenant_id }}" >> $GITHUB_OUTPUT
+            echo "icon=${{ github.event.client_payload.icon_url }}" >> $GITHUB_OUTPUT
+            echo "callback=${{ github.event.client_payload.callback_url }}" >> $GITHUB_OUTPUT
+          else
+            echo "name=${{ inputs.tenant_name }}" >> $GITHUB_OUTPUT
+            echo "slug=${{ inputs.tenant_slug }}" >> $GITHUB_OUTPUT
+            echo "id=${{ inputs.tenant_id }}" >> $GITHUB_OUTPUT
+            echo "icon=${{ inputs.icon_url }}" >> $GITHUB_OUTPUT
+            echo "callback=${{ inputs.callback_url }}" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Build branded installer
+        shell: bash
+        run: |
+          ICON_ARG=""
+          if [ -n "${{ steps.vars.outputs.icon }}" ]; then
+            ICON_ARG="--icon ${{ steps.vars.outputs.icon }}"
+          fi
+          node scripts/build-tenant.js \
+            --name "${{ steps.vars.outputs.name }}" \
+            --slug "${{ steps.vars.outputs.slug }}" \
+            $ICON_ARG
+
+      - name: Find installer file
+        id: installer
+        shell: bash
+        run: |
+          FILE=$(ls dist/*.exe | head -1)
+          echo "path=$FILE" >> $GITHUB_OUTPUT
+          echo "filename=$(basename $FILE)" >> $GITHUB_OUTPUT
+          echo "Found: $FILE"
+
+      - name: Create/update GitHub Release for this tenant
+        uses: softprops/action-gh-release@v2
+        id: release
+        with:
+          tag_name: tenant-${{ steps.vars.outputs.slug }}
+          name: "${{ steps.vars.outputs.name }} CRM"
+          body: "Branded CRM installer for ${{ steps.vars.outputs.name }}. Built automatically."
+          files: ${{ steps.installer.outputs.path }}
+          token: ${{ secrets.GITHUB_TOKEN }}
+          make_latest: false
+
+      - name: Callback to API with download URL
+        if: steps.vars.outputs.callback != ''
+        shell: bash
+        run: |
+          DOWNLOAD_URL="${{ steps.release.outputs.url }}/download/${{ steps.installer.outputs.filename }}"
+          # Use the direct release asset URL format
+          DIRECT_URL="https://github.com/${{ github.repository }}/releases/download/tenant-${{ steps.vars.outputs.slug }}/${{ steps.installer.outputs.filename }}"
+          echo "Download URL: $DIRECT_URL"
+          curl -s -X POST "${{ steps.vars.outputs.callback }}" \
+            -H "Content-Type: application/json" \
+            -H "X-Build-Secret: ${{ secrets.BUILD_CALLBACK_SECRET }}" \
+            -d "{\"tenant_id\": \"${{ steps.vars.outputs.id }}\", \"crm_download_url\": \"$DIRECT_URL\", \"slug\": \"${{ steps.vars.outputs.slug }}\"}" \
+            || echo "Callback failed (non-fatal)"
+
+      - name: Upload as workflow artifact (backup)
+        uses: actions/upload-artifact@v4
+        with:
+          name: crm-installer-${{ steps.vars.outputs.slug }}
+          path: dist/*.exe
+          retention-days: 30
