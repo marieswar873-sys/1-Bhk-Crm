@@ -66,6 +66,8 @@ jobs:
 
       - name: Build branded installer
         shell: bash
+        env:
+          CI: "false"
         run: |
           ICON_ARG=""
           if [ -n "${{ steps.vars.outputs.icon }}" ]; then
