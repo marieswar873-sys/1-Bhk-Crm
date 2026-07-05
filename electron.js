@@ -108,8 +108,15 @@ function createWindow() {
   const iconPath = path.join(__dirname, 'client', 'public', 'logo.png');
   const appIcon = nativeImage.createFromPath(iconPath);
 
-  // Resolve app title from saved settings (outlet_name key)
+  // Resolve app title: SQLite outlet_name → branding.json → fallback
   let appTitle = 'Restaurant CRM';
+  try {
+    const brandingFile = path.join(__dirname, 'branding.json');
+    if (fs.existsSync(brandingFile)) {
+      const b = JSON.parse(fs.readFileSync(brandingFile, 'utf8'));
+      if (b.name) appTitle = `${b.name} CRM`;
+    }
+  } catch {}
   try {
     const { getDb } = require('./server/db/schema');
     const db = getDb();

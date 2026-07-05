@@ -116,6 +116,11 @@ async function main() {
   fs.writeFileSync(pkgPath, JSON.stringify(pkg, null, 2));
   console.log('Patched package.json');
 
+  // Write branding.json so Electron shows the correct name before first sync
+  const brandingPath = path.join(ROOT, 'branding.json');
+  fs.writeFileSync(brandingPath, JSON.stringify({ name, slug: safeSlug }, null, 2));
+  console.log('Wrote branding.json');
+
   try {
     // 3. Build
     console.log('\nRunning electron-builder...\n');
