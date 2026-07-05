@@ -121,17 +121,54 @@ async function main() {
   fs.writeFileSync(brandingPath, JSON.stringify({ name, slug: safeSlug }, null, 2));
   console.log('Wrote branding.json');
 
+  // 3. Patch React client branding (Layout.js, Login.js, logo files)
+  const layoutPath = path.join(ROOT, 'client', 'src', 'components', 'Layout.js');
+  const loginPath  = path.join(ROOT, 'client', 'src', 'pages', 'Login.js');
+  const srcLogoPath = path.join(ROOT, 'client', 'src', 'logo.png');
+  const pubLogoPath = path.join(ROOT, 'client', 'public', 'logo.png');
+
+  const layoutOrig = fs.readFileSync(layoutPath, 'utf8');
+  const loginOrig  = fs.readFileSync(loginPath,  'utf8');
+  const srcLogoOrig = fs.existsSync(srcLogoPath) ? fs.readFileSync(srcLogoPath) : null;
+  const pubLogoOrig = fs.existsSync(pubLogoPath) ? fs.readFileSync(pubLogoPath) : null;
+
+  // Replace "1BHK CRM" and "1BHK Kitchen" with tenant name in JS source
+  fs.writeFileSync(layoutPath, layoutOrig.replace(/1BHK CRM/g, `${name} CRM`).replace(/1BHK Kitchen/g, name));
+  fs.writeFileSync(loginPath,  loginOrig .replace(/1BHK CRM/g, `${name} CRM`).replace(/1BHK Kitchen/g, name));
+  console.log('Patched Layout.js and Login.js');
+
+  // Replace logo with tenant icon PNG if provided
+  if (icon && icoRel !== 'app-icon.ico') {
+    // Re-download PNG (we already converted it to ICO and deleted it)
+    const tmpLogoPng = path.join(ROOT, 'app-icon-tenant-logo.png');
+    if (icon.startsWith('http://') || icon.startsWith('https://')) {
+      await download(icon, tmpLogoPng);
+    } else {
+      fs.copyFileSync(path.resolve(icon), tmpLogoPng);
+    }
+    if (fs.existsSync(tmpLogoPng)) {
+      fs.copyFileSync(tmpLogoPng, srcLogoPath);
+      fs.copyFileSync(tmpLogoPng, pubLogoPath);
+      fs.unlinkSync(tmpLogoPng);
+      console.log('Replaced logo.png with tenant logo');
+    }
+  }
+
   try {
-    // 3. Build
+    // 4. Build
     console.log('\nRunning electron-builder...\n');
     execSync('npm run dist:win', { cwd: ROOT, stdio: 'inherit' });
 
     console.log(`\nDone! Installer at: dist/${artifactName}.exe`);
   } finally {
-    // 4. Restore package.json regardless of build outcome
+    // 5. Restore everything regardless of build outcome
     pkg.build = originalBuild;
     fs.writeFileSync(pkgPath, JSON.stringify(pkg, null, 2));
-    console.log('Restored package.json');
+    fs.writeFileSync(layoutPath, layoutOrig);
+    fs.writeFileSync(loginPath,  loginOrig);
+    if (srcLogoOrig) fs.writeFileSync(srcLogoPath, srcLogoOrig);
+    if (pubLogoOrig) fs.writeFileSync(pubLogoPath, pubLogoOrig);
+    console.log('Restored all source files');
 
     // Clean up tenant icon
     try { if (icoRel !== 'app-icon.ico') fs.unlinkSync(icoPath); } catch {}
