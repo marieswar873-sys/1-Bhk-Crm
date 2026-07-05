@@ -38,14 +38,13 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: '20'
-          cache: 'npm'
+          node-version: '22'
 
       - name: Install root dependencies
         run: npm ci
 
       - name: Install client dependencies
-        run: cd client && npm ci
+        run: cd client && npm install --legacy-peer-deps
 
       - name: Resolve inputs (dispatch vs manual)
         id: vars
