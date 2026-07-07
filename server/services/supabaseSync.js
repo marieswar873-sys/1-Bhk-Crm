@@ -25,10 +25,14 @@ function getApiUrl() {
   return process.env.SAAS_API_URL || getSetting('cloud_api_url') || DEFAULT_API_URL;
 }
 
+function getMachineId() {
+  try { return require('../../license').machineId(); } catch { return 'unknown'; }
+}
+
 async function postJson(path, body, apiKey) {
   const res = await fetch(`${getApiUrl()}${path}`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json', 'X-API-Key': apiKey },
+    headers: { 'Content-Type': 'application/json', 'X-API-Key': apiKey, 'X-Machine-ID': getMachineId() },
     body: JSON.stringify(body),
   });
   const data = await res.json().catch(() => ({}));
@@ -37,7 +41,7 @@ async function postJson(path, body, apiKey) {
 }
 
 async function getJson(path, apiKey) {
-  const res = await fetch(`${getApiUrl()}${path}`, { headers: { 'X-API-Key': apiKey } });
+  const res = await fetch(`${getApiUrl()}${path}`, { headers: { 'X-API-Key': apiKey, 'X-Machine-ID': getMachineId() } });
   const data = await res.json().catch(() => ({}));
   if (!res.ok) throw new Error(data.error || `${path} failed (${res.status})`);
   return data;
