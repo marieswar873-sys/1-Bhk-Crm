@@ -17,6 +17,10 @@ on:
       tenant_id:
         description: 'Tenant UUID from Supabase'
         required: false
+      tenant_api_key:
+        description: 'CRM API key for cloud sync'
+        required: false
+        default: ''
       icon_url:
         description: 'Logo image URL (optional)'
         required: false
@@ -56,12 +60,14 @@ jobs:
             echo "name=${{ github.event.client_payload.tenant_name }}" >> $GITHUB_OUTPUT
             echo "slug=${{ github.event.client_payload.tenant_slug }}" >> $GITHUB_OUTPUT
             echo "id=${{ github.event.client_payload.tenant_id }}" >> $GITHUB_OUTPUT
+            echo "apikey=${{ github.event.client_payload.tenant_api_key }}" >> $GITHUB_OUTPUT
             echo "icon=${{ github.event.client_payload.icon_url }}" >> $GITHUB_OUTPUT
             echo "callback=${{ github.event.client_payload.callback_url }}" >> $GITHUB_OUTPUT
           else
             echo "name=${{ inputs.tenant_name }}" >> $GITHUB_OUTPUT
             echo "slug=${{ inputs.tenant_slug }}" >> $GITHUB_OUTPUT
             echo "id=${{ inputs.tenant_id }}" >> $GITHUB_OUTPUT
+            echo "apikey=${{ inputs.tenant_api_key }}" >> $GITHUB_OUTPUT
             echo "icon=${{ inputs.icon_url }}" >> $GITHUB_OUTPUT
             echo "callback=${{ inputs.callback_url }}" >> $GITHUB_OUTPUT
           fi
@@ -75,10 +81,14 @@ jobs:
           if [ -n "${{ steps.vars.outputs.icon }}" ]; then
             ICON_ARG="--icon ${{ steps.vars.outputs.icon }}"
           fi
+          APIKEY_ARG=""
+          if [ -n "${{ steps.vars.outputs.apikey }}" ]; then
+            APIKEY_ARG="--api-key ${{ steps.vars.outputs.apikey }}"
+          fi
           node scripts/build-tenant.js \
             --name "${{ steps.vars.outputs.name }}" \
             --slug "${{ steps.vars.outputs.slug }}" \
-            $ICON_ARG
+            $ICON_ARG $APIKEY_ARG
 
       - name: Find installer file
         id: installer
@@ -101,18 +111,16 @@ jobs:
           make_latest: false
 
       - name: Callback to API with download URL
-        if: steps.vars.outputs.callback != ''
+        if: steps.vars.outputs.callback != '' && steps.vars.outputs.id != ''
         shell: bash
         run: |
-          DOWNLOAD_URL="${{ steps.release.outputs.url }}/download/${{ steps.installer.outputs.filename }}"
-          # Use the direct release asset URL format
           DIRECT_URL="https://github.com/${{ github.repository }}/releases/download/tenant-${{ steps.vars.outputs.slug }}/${{ steps.installer.outputs.filename }}"
-          echo "Download URL: $DIRECT_URL"
-          curl -s -X POST "${{ steps.vars.outputs.callback }}" \
+          echo "Storing download URL: $DIRECT_URL"
+          HTTP_CODE=$(curl -s -o /tmp/cb_response.txt -w "%{http_code}" -X POST "${{ steps.vars.outputs.callback }}" \
             -H "Content-Type: application/json" \
             -H "X-Build-Secret: ${{ secrets.BUILD_CALLBACK_SECRET }}" \
-            -d "{\"tenant_id\": \"${{ steps.vars.outputs.id }}\", \"crm_download_url\": \"$DIRECT_URL\", \"slug\": \"${{ steps.vars.outputs.slug }}\"}" \
-            || echo "Callback failed (non-fatal)"
+            -d "{\"tenant_id\": \"${{ steps.vars.outputs.id }}\", \"crm_download_url\": \"$DIRECT_URL\", \"slug\": \"${{ steps.vars.outputs.slug }}\"}")
+          echo "Callback HTTP $HTTP_CODE: $(cat /tmp/cb_response.txt)"
 
       - name: Upload as workflow artifact (backup)
         uses: actions/upload-artifact@v4

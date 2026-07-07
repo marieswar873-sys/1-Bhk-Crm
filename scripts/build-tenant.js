@@ -37,11 +37,12 @@ function parseArgs() {
   const name = get('--name');
   const slug = get('--slug');
   const icon = get('--icon');
+  const apiKey = get('--api-key');
   if (!name || !slug) {
-    console.error('Usage: node scripts/build-tenant.js --name "Restaurant Name" --slug slug [--icon url-or-path]');
+    console.error('Usage: node scripts/build-tenant.js --name "Restaurant Name" --slug slug [--icon url-or-path] [--api-key key]');
     process.exit(1);
   }
-  return { name, slug, icon };
+  return { name, slug, icon, apiKey };
 }
 
 function download(url, dest) {
@@ -86,7 +87,7 @@ async function ensureIcon(iconSrc) {
 }
 
 async function main() {
-  const { name, slug, icon } = parseArgs();
+  const { name, slug, icon, apiKey } = parseArgs();
 
   const safeSlug = slug.replace(/[^a-z0-9-]/gi, '-');
   const safeName = name.replace(/[^a-z0-9 ]/gi, '').trim();
@@ -115,6 +116,20 @@ async function main() {
 
   fs.writeFileSync(pkgPath, JSON.stringify(pkg, null, 2));
   console.log('Patched package.json');
+
+  // Bake TENANT_API_KEY into .env so the CRM can sync from day 1
+  const envPath = path.join(ROOT, '.env');
+  const envOrig = fs.existsSync(envPath) ? fs.readFileSync(envPath, 'utf8') : '';
+  if (apiKey) {
+    let envContent = envOrig;
+    if (/TENANT_API_KEY=/.test(envContent)) {
+      envContent = envContent.replace(/TENANT_API_KEY=.*/g, `TENANT_API_KEY=${apiKey}`);
+    } else {
+      envContent += `\nTENANT_API_KEY=${apiKey}\n`;
+    }
+    fs.writeFileSync(envPath, envContent);
+    console.log('Baked TENANT_API_KEY into .env');
+  }
 
   // Write branding.json so Electron shows the correct name before first sync
   const brandingPath = path.join(ROOT, 'branding.json');
@@ -168,6 +183,7 @@ async function main() {
     fs.writeFileSync(loginPath,  loginOrig);
     if (srcLogoOrig) fs.writeFileSync(srcLogoPath, srcLogoOrig);
     if (pubLogoOrig) fs.writeFileSync(pubLogoPath, pubLogoOrig);
+    if (apiKey) fs.writeFileSync(envPath, envOrig); // restore .env (remove baked key)
     console.log('Restored all source files');
 
     // Clean up tenant icon
