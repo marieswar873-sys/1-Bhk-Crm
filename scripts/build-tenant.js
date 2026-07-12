@@ -124,20 +124,23 @@ async function main() {
   console.log('Wrote branding.json');
 
   // 3. Patch React client branding (Layout.js, Login.js, logo files)
-  const layoutPath = path.join(ROOT, 'client', 'src', 'components', 'Layout.js');
-  const loginPath  = path.join(ROOT, 'client', 'src', 'pages', 'Login.js');
+  const layoutPath  = path.join(ROOT, 'client', 'src', 'components', 'Layout.js');
+  const loginPath   = path.join(ROOT, 'client', 'src', 'pages', 'Login.js');
+  const indexPath   = path.join(ROOT, 'client', 'public', 'index.html');
   const srcLogoPath = path.join(ROOT, 'client', 'src', 'logo.png');
   const pubLogoPath = path.join(ROOT, 'client', 'public', 'logo.png');
 
   const layoutOrig = fs.readFileSync(layoutPath, 'utf8');
   const loginOrig  = fs.readFileSync(loginPath,  'utf8');
+  const indexOrig  = fs.existsSync(indexPath) ? fs.readFileSync(indexPath, 'utf8') : null;
   const srcLogoOrig = fs.existsSync(srcLogoPath) ? fs.readFileSync(srcLogoPath) : null;
   const pubLogoOrig = fs.existsSync(pubLogoPath) ? fs.readFileSync(pubLogoPath) : null;
 
   // Replace "1BHK CRM" and "1BHK Kitchen" with tenant name in JS source
   fs.writeFileSync(layoutPath, layoutOrig.replace(/1BHK CRM/g, `${name} CRM`).replace(/1BHK Kitchen/g, name));
   fs.writeFileSync(loginPath,  loginOrig .replace(/1BHK CRM/g, `${name} CRM`).replace(/1BHK Kitchen/g, name));
-  console.log('Patched Layout.js and Login.js');
+  if (indexOrig) fs.writeFileSync(indexPath, indexOrig.replace(/1BHK CRM/g, `${name} CRM`).replace(/1BHK Kitchen/g, name));
+  console.log('Patched Layout.js, Login.js and index.html');
 
   // Replace logo with tenant icon PNG if provided
   if (icon && icoRel !== 'app-icon.ico') {
@@ -168,6 +171,7 @@ async function main() {
     fs.writeFileSync(pkgPath, JSON.stringify(pkg, null, 2));
     fs.writeFileSync(layoutPath, layoutOrig);
     fs.writeFileSync(loginPath,  loginOrig);
+    if (indexOrig) fs.writeFileSync(indexPath, indexOrig);
     if (srcLogoOrig) fs.writeFileSync(srcLogoPath, srcLogoOrig);
     if (pubLogoOrig) fs.writeFileSync(pubLogoPath, pubLogoOrig);
     console.log('Restored all source files');
