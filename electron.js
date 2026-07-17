@@ -166,7 +166,8 @@ async function dailyBackup() {
   try {
     const dbPath = process.env.DB_PATH;
     if (!dbPath || !fs.existsSync(dbPath)) return;
-    const dir = path.join(app.getPath('documents'), '1BHK-CRM-Backups');
+    const dataDir = path.dirname(dbPath); // same ProgramData\<slug>\ folder
+    const dir = path.join(dataDir, 'backups');
     fs.mkdirSync(dir, { recursive: true });
     const today = new Date().toISOString().slice(0, 10);
     const dest = path.join(dir, `restaurant-${today}.db`);
@@ -180,12 +181,24 @@ async function dailyBackup() {
 }
 
 app.whenReady().then(() => {
-  // Set DB path to user data folder
-  process.env.DB_PATH = path.join(app.getPath('userData'), 'restaurant.db');
+  // Use a fixed path under C:\ProgramData\<slug>\ so the database
+  // survives app uninstalls/reinstalls and is always in the same place.
+  let dataDir;
+  try {
+    const brandingFile = path.join(__dirname, 'branding.json');
+    const slug = fs.existsSync(brandingFile)
+      ? (JSON.parse(fs.readFileSync(brandingFile, 'utf8')).slug || '1bhk-crm')
+      : '1bhk-crm';
+    dataDir = path.join('C:\\ProgramData', slug);
+  } catch {
+    dataDir = path.join('C:\\ProgramData', '1bhk-crm');
+  }
+  fs.mkdirSync(dataDir, { recursive: true });
+  process.env.DB_PATH = path.join(dataDir, 'restaurant.db');
   process.env.PORT = String(PORT);
 
   // Initialise licensing (license file lives next to the DB)
-  license.init(app.getPath('userData'));
+  license.init(dataDir);
 
   // Load .env
   try { require('dotenv').config({ path: path.join(__dirname, '.env') }); } catch {}
