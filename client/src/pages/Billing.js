@@ -60,6 +60,8 @@ export default function Billing() {
   const [existingItems, setExistingItems] = useState([]);
   const [newItems, setNewItems] = useState([]);
   const [variantPopup, setVariantPopup] = useState(null);
+  const [discountType, setDiscountType] = useState('flat'); // flat | percent
+  const [discountValue, setDiscountValue] = useState(0);
 
   const loadMenu = () => {
     Promise.all([api.get('/menu/items'), api.get('/menu/categories'), api.get('/tables'), api.get('/settings')])
@@ -103,7 +105,7 @@ export default function Billing() {
     setNewItems(prev => {
       const existing = prev.find(c => c.cart_key === cartKey);
       if (existing) return prev.map(c => c.cart_key === cartKey ? { ...c, quantity: c.quantity + 1 } : c);
-      return [...prev, { cart_key: cartKey, menu_item_id: item.id, variant_id: variant?.id || null, name: label, price, tax_percent: item.tax_percent, quantity: 1, is_veg: item.is_veg, price_delta: variant?.price_delta || 0 }];
+      return [...prev, { cart_key: cartKey, menu_item_id: item.id, variant_id: variant?.id || null, name: label, price, base_price: item.price, tax_percent: item.tax_percent, quantity: 1, is_veg: item.is_veg, price_delta: variant?.price_delta || 0 }];
     });
     setVariantPopup(null);
   };
@@ -169,7 +171,8 @@ export default function Billing() {
   const grandSubtotal = Math.round((existingSubtotal + newSubtotal) * 100) / 100;
   const grandTax = Math.round((existingTax + newTax) * 100) / 100;
   const grandPacking = Math.round(existingPacking * 100) / 100;
-  const grandTotal = Math.round((grandSubtotal + grandTax + grandPacking) * 100) / 100;
+  const discountAmt = Math.round((discountType === 'percent' ? (grandSubtotal * Math.min(parseFloat(discountValue) || 0, 100) / 100) : Math.min(parseFloat(discountValue) || 0, grandSubtotal)) * 100) / 100;
+  const grandTotal = Math.round((grandSubtotal + grandTax + grandPacking - discountAmt) * 100) / 100;
 
   // === KOT PRINT ===
   const printKot = (kotNumber, orderNumber, type, tableNum, items) => {
@@ -252,6 +255,7 @@ export default function Billing() {
       <div class="row detail"><span>Subtotal (${totalItems} items)</span><span>₹${order.subtotal.toFixed(2)}</span></div>
       ${gstSection}
       ${order.packing_charges > 0 ? `<div class="row detail"><span>Packing Charges</span><span>₹${order.packing_charges.toFixed(2)}</span></div>` : ''}
+      ${order.discount_amount > 0 ? `<div class="row detail" style="color:#e53935"><span>Discount${order.discount_type === 'percent' ? ` (${order.discount_value}%)` : ''}</span><span>-₹${order.discount_amount.toFixed(2)}</span></div>` : ''}
       <div class="dbl-line"></div>
       <div class="row bold xl"><span>TOTAL</span><span>₹${order.total.toFixed(2)}</span></div>
       <div class="dbl-line"></div>
@@ -275,7 +279,7 @@ export default function Billing() {
       const { data } = await api.post('/orders', {
         order_type: orderType, table_id: orderType === 'dine_in' ? tableId : null,
         customer_name: customerName || null, customer_phone: customerPhone || null,
-        items: newItems.map(c => ({ menu_item_id: c.menu_item_id, variant_id: c.variant_id, quantity: c.quantity, price_delta: c.price_delta })),
+        items: newItems.map(c => ({ menu_item_id: c.menu_item_id, variant_id: c.variant_id, quantity: c.quantity, price_delta: c.price - c.base_price })),
       });
       toast.success(`Order ${data.order_number} — KOT #${data.kot_number}`);
       const table = tables.find(t => t.id === tableId);
@@ -291,7 +295,7 @@ export default function Billing() {
     if (!newItems.length || !currentOrder) return;
     try {
       const { data } = await api.post(`/orders/${currentOrder.id}/kot`, {
-        items: newItems.map(c => ({ menu_item_id: c.menu_item_id, variant_id: c.variant_id, quantity: c.quantity, price_delta: c.price_delta })),
+        items: newItems.map(c => ({ menu_item_id: c.menu_item_id, variant_id: c.variant_id, quantity: c.quantity, price_delta: c.price - c.base_price })),
       });
       toast.success(`KOT #${data.kot_number} sent!`);
       const table = tables.find(t => t.id === currentOrder.table_id);
@@ -309,12 +313,21 @@ export default function Billing() {
     loadActiveOrders();
   };
 
+  // Apply discount to order object for printing
+  const applyDiscount = (order) => ({
+    ...order,
+    discount_amount: discountAmt,
+    discount_type: discountType,
+    discount_value: discountValue,
+    total: grandTotal,
+  });
+
   // Generate Bill (print bill, mark as billed, then show payment buttons)
   const generateBill = async () => {
     if (!currentOrder) return;
     if (newItems.length > 0) return toast.error('Send pending items to kitchen first');
-    printBill(currentOrder, existingItems);
-    await api.patch(`/orders/${currentOrder.id}/bill-printed`);
+    printBill(applyDiscount(currentOrder), existingItems);
+    await api.patch(`/orders/${currentOrder.id}/bill-printed`, { discount_amount: discountAmt, discount_type: discountType, discount_value: discountValue });
     setCurrentOrder(prev => ({ ...prev, bill_printed: 1 }));
     setMode('payment');
     toast.success('Bill printed');
@@ -324,9 +337,9 @@ export default function Billing() {
   const billAndPay = async (method) => {
     if (!currentOrder) return;
     if (newItems.length > 0) return toast.error('Send pending items to kitchen first');
-    printBill(currentOrder, existingItems);
+    printBill(applyDiscount(currentOrder), existingItems);
     try {
-      await api.post(`/orders/${currentOrder.id}/quick-pay`, { method });
+      await api.post(`/orders/${currentOrder.id}/quick-pay`, { method, discount_amount: discountAmt, discount_type: discountType, discount_value: discountValue });
       toast.success(`Bill printed & paid via ${method}!`);
       resetToNew();
       loadActiveOrders();
@@ -355,6 +368,8 @@ export default function Billing() {
     setCustomerPhone('');
     setTableId('');
     setOrderType('takeaway');
+    setDiscountValue(0);
+    setDiscountType('flat');
   };
 
   const [mobileTab, setMobileTab] = useState('menu'); // orders | menu | cart
@@ -598,6 +613,20 @@ export default function Billing() {
                 <span>Packing</span><span>₹{grandPacking.toFixed(2)}</span>
               </div>
             )}
+            {/* Discount Row */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: 4, marginTop: 4, marginBottom: 2 }}>
+              <span style={{ fontSize: 12, color: '#e53935', fontWeight: 600, minWidth: 60 }}>Discount</span>
+              <select value={discountType} onChange={e => setDiscountType(e.target.value)}
+                style={{ fontSize: 11, padding: '2px 4px', border: '1px solid #ccc', borderRadius: 4, background: '#fff' }}>
+                <option value="flat">₹ Flat</option>
+                <option value="percent">% Off</option>
+              </select>
+              <input type="number" min="0" value={discountValue}
+                onChange={e => setDiscountValue(e.target.value)}
+                style={{ width: 60, fontSize: 12, padding: '2px 6px', border: '1px solid #e53935', borderRadius: 4, textAlign: 'right' }}
+                placeholder="0" />
+              {discountAmt > 0 && <span style={{ fontSize: 11, color: '#e53935', marginLeft: 4 }}>-₹{discountAmt.toFixed(0)}</span>}
+            </div>
             <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 17, fontWeight: 700, color: '#1a1a2e', marginTop: 4 }}>
               <span>Total</span><span>₹{grandTotal.toFixed(2)}</span>
             </div>

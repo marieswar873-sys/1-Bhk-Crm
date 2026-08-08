@@ -2,7 +2,7 @@ require('dotenv').config();
 const express = require('express');
 const cors = require('cors');
 const path = require('path');
-const { initDb } = require('./db/schema');
+const { initDb, getDb } = require('./db/schema');
 const { startDailyReportCron, sendTestReport } = require('./services/emailReport');
 const { startSyncService, fullSync, getApiKey, restoreFromCloud } = require('./services/supabaseSync');
 const { authMiddleware, requireRole } = require('./middleware/auth');
@@ -37,6 +37,41 @@ app.use('/api/auth/login', (req, res, next) => {
 });
 
 initDb();
+
+// Activation — check if API key is set, validate+save a new one (no auth required)
+app.get('/api/activation/status', (req, res) => {
+  const row = getDb().prepare("SELECT value FROM settings WHERE key='cloud_api_key' LIMIT 1").get();
+  res.json({ activated: !!(row?.value) });
+});
+
+app.post('/api/activation/activate', async (req, res) => {
+  const { apiKey } = req.body;
+  if (!apiKey) return res.status(400).json({ error: 'API key required' });
+  const { getDb } = require('./db/schema');
+  const { v4: uuid } = require('uuid');
+  const SAAS_URL = process.env.SAAS_API_URL || 'https://saas-7i5z.onrender.com';
+  let machineId = 'unknown';
+  try { machineId = require('../license').machineId(); } catch {}
+  try {
+    const r = await fetch(`${SAAS_URL}/api/sync/validate`, {
+      headers: { 'X-API-Key': apiKey, 'X-Machine-ID': machineId }
+    });
+    const data = await r.json().catch(() => ({}));
+    if (!r.ok) return res.status(r.status).json({ error: data.error || 'Invalid key' });
+    if (!data.active) return res.status(403).json({ error: 'This restaurant account is not active.' });
+
+    const db = getDb();
+    const outlet = db.prepare('SELECT id FROM outlets LIMIT 1').get();
+    if (!outlet) return res.status(500).json({ error: 'No outlet found' });
+    db.prepare("INSERT INTO settings (id,outlet_id,key,value) VALUES (?,?,?,?) ON CONFLICT(outlet_id,key) DO UPDATE SET value=excluded.value")
+      .run(uuid(), outlet.id, 'cloud_api_key', apiKey);
+
+    fullSync().catch(() => {});
+    res.json({ success: true, name: data.name });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
 
 app.use('/api/auth', require('./routes/auth'));
 app.use('/api/menu', require('./routes/menu'));

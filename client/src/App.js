@@ -2,6 +2,7 @@ import { HashRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { Toaster } from 'react-hot-toast';
 import { AuthProvider, useAuth } from './context/AuthContext';
 import LicenseGate from './components/LicenseGate';
+import ActivationGate from './components/ActivationGate';
 import Layout from './components/Layout';
 import Login from './pages/Login';
 import Dashboard from './pages/Dashboard';
@@ -21,6 +22,7 @@ function ProtectedRoute({ children }) {
 
 function App() {
   return (
+    <ActivationGate>
     <LicenseGate>
     <AuthProvider>
       <HashRouter>
@@ -41,6 +43,7 @@ function App() {
       </HashRouter>
     </AuthProvider>
     </LicenseGate>
+    </ActivationGate>
   );
 }
 
