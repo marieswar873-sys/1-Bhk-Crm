@@ -165,6 +165,27 @@ async function syncDailySummary(apiKey) {
   console.log(`[Sync] Daily summary pushed for ${today}`);
 }
 
+async function syncInventory(apiKey) {
+  const db = getDb();
+  const outlet = db.prepare('SELECT id FROM outlets LIMIT 1').get();
+  if (!outlet) return;
+  const items = db.prepare('SELECT * FROM inventory_items WHERE outlet_id = ?').all(outlet.id);
+  const transactions = db.prepare('SELECT * FROM inventory_transactions WHERE outlet_id = ?').all(outlet.id);
+  if (!items.length && !transactions.length) return;
+  const out = await postJson('/api/sync/inventory', { items, transactions }, apiKey);
+  console.log(`[Sync] Inventory pushed — ${out.synced?.items || 0} items, ${out.synced?.transactions || 0} txns`);
+}
+
+async function syncPlatformSales(apiKey) {
+  const db = getDb();
+  const outlet = db.prepare('SELECT id FROM outlets LIMIT 1').get();
+  if (!outlet) return;
+  const sales = db.prepare('SELECT * FROM platform_sales WHERE outlet_id = ?').all(outlet.id);
+  if (!sales.length) return;
+  const out = await postJson('/api/sync/platform-sales', { sales }, apiKey);
+  console.log(`[Sync] Platform sales pushed — ${out.synced || 0} records`);
+}
+
 async function fullSync() {
   const apiKey = getApiKey();
   if (!apiKey) { console.log('[Sync] No tenant API key set — sync skipped. Add it in Settings.'); return; }
@@ -177,6 +198,8 @@ async function fullSync() {
     await syncMenu(apiKey);
     await syncOrders(apiKey);
     try { await syncDailySummary(apiKey); } catch (e) { console.warn('[Sync] Summary skipped:', e.message); }
+    try { await syncInventory(apiKey); } catch (e) { console.warn('[Sync] Inventory skipped:', e.message); }
+    try { await syncPlatformSales(apiKey); } catch (e) { console.warn('[Sync] Platform sales skipped:', e.message); }
     console.log(`[Sync] Complete at ${new Date().toLocaleTimeString()}`);
   } catch (err) {
     console.error('[Sync] Error:', err.message);
@@ -190,4 +213,4 @@ function startSyncService() {
   console.log(`[Sync] Cloud sync scheduled (every 5 min) → ${getApiUrl()}`);
 }
 
-module.exports = { startSyncService, fullSync, syncMenu, syncOrders, getApiKey, restoreFromCloud };
+module.exports = { startSyncService, fullSync, syncMenu, syncOrders, syncInventory, syncPlatformSales, getApiKey, restoreFromCloud };
