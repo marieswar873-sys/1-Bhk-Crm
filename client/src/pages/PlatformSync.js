@@ -3,7 +3,7 @@ import api from '../utils/api';
 import toast from 'react-hot-toast';
 
 const PLATFORMS = [
-  { id: 'swiggy', label: 'Swiggy', color: '#fc8019', icon: '🟧', emailKey: 'swiggy_email', fieldLabel: 'Mobile / Restaurant ID' },
+  { id: 'swiggy', label: 'Swiggy', color: '#fc8019', icon: '🟧', emailKey: 'swiggy_email', fieldLabel: 'Mobile / Restaurant ID', passwordKey: 'swiggy_password' },
   { id: 'zomato', label: 'Zomato', color: '#e23744', icon: '🟥', emailKey: 'zomato_email', fieldLabel: 'Partner Email' },
 ];
 
@@ -166,6 +166,15 @@ export default function PlatformSync() {
                 placeholder={`${p.label} ${p.fieldLabel}`}
                 style={{ padding: '10px 14px', border: '1px solid #ddd', borderRadius: 8, fontSize: 14, width: '100%', boxSizing: 'border-box' }}
               />
+              {p.passwordKey && (
+                <input
+                  type="password"
+                  value={settings[p.passwordKey] || ''}
+                  onChange={e => setSettings(s => ({ ...s, [p.passwordKey]: e.target.value }))}
+                  placeholder="Password (optional — skips OTP)"
+                  style={{ padding: '10px 14px', border: '1px solid #ddd', borderRadius: 8, fontSize: 14, width: '100%', boxSizing: 'border-box', marginTop: 8 }}
+                />
+              )}
             </div>
           ))}
         </div>
