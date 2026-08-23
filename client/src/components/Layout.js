@@ -1,8 +1,9 @@
 import { NavLink, Outlet, useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { FiHome, FiShoppingCart, FiGrid, FiList, FiBarChart2, FiUpload, FiLogOut, FiMenu, FiSettings, FiPackage, FiRefreshCw } from 'react-icons/fi';
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import logo from '../logo.png';
+import api from '../utils/api';
 
 const navItems = [
   { to: '/', icon: FiHome, label: 'Dashboard' },
@@ -21,6 +22,15 @@ export default function Layout() {
   const { user, logout } = useAuth();
   const navigate = useNavigate();
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [outletName, setOutletName] = useState('');
+  const [outletLogo, setOutletLogo] = useState('');
+
+  useEffect(() => {
+    api.get('/settings').then(res => {
+      if (res.data?.outlet_name) setOutletName(res.data.outlet_name);
+      if (res.data?.logo_url) setOutletLogo(res.data.logo_url);
+    }).catch(() => {});
+  }, []);
 
   const handleLogout = () => {
     logout();
@@ -56,8 +66,8 @@ export default function Layout() {
         overflow: 'hidden', display: 'flex', flexDirection: 'column', flexShrink: 0
       }}>
         <div style={{ padding: '12px 16px', borderBottom: '1px solid #333', display: 'flex', alignItems: 'center', gap: 8 }}>
-          <img src={logo} alt="1BHK" style={{ width: 36, height: 36, borderRadius: 6 }} />
-          <span style={{ fontWeight: 700, fontSize: 15 }}>1BHK CRM</span>
+          <img src={outletLogo || logo} alt="logo" style={{ width: 36, height: 36, borderRadius: 6, objectFit: 'cover' }} />
+          <span style={{ fontWeight: 700, fontSize: 15 }}>{outletName || '1BHK CRM'}</span>
         </div>
         <nav style={{ flex: 1, padding: '8px 0', overflowY: 'auto' }}>
           {navItems.map(({ to, icon: Icon, label }) => (
@@ -92,8 +102,8 @@ export default function Layout() {
           <button onClick={() => setSidebarOpen(!sidebarOpen)} style={{
             background: 'none', border: 'none', color: '#fff', fontSize: 22, cursor: 'pointer', padding: 4
           }}>☰</button>
-          <img src={logo} alt="1BHK" style={{ width: 28, height: 28, borderRadius: 4 }} />
-          <span style={{ fontWeight: 700, fontSize: 14 }}>1BHK CRM</span>
+          <img src={outletLogo || logo} alt="logo" style={{ width: 28, height: 28, borderRadius: 4, objectFit: 'cover' }} />
+          <span style={{ fontWeight: 700, fontSize: 14 }}>{outletName || '1BHK CRM'}</span>
         </div>
         <main style={{ flex: 1, overflow: 'auto', padding: '16px' }}>
           <Outlet />
