@@ -2,6 +2,14 @@ const nodemailer = require('nodemailer');
 const cron = require('node-cron');
 const { getDb } = require('../db/schema');
 
+// IST = UTC+5:30. Always compute dates in IST so reports don't cross the date boundary.
+function toIST(d = new Date()) {
+  return new Date(d.getTime() + 5.5 * 60 * 60 * 1000);
+}
+function toISTDateStr(d = new Date()) {
+  return toIST(d).toISOString().slice(0, 10);
+}
+
 function getSettings(outletId) {
   const rows = getDb().prepare('SELECT key, value FROM settings WHERE outlet_id=?').all(outletId);
   const s = {}; for (const r of rows) s[r.key]=r.value; return s;
@@ -28,7 +36,7 @@ async function sendDailyReport() {
     let recipients=[]; try { recipients=JSON.parse(settings.partner_emails||'[]'); } catch {}
     if (settings.company_email) recipients.unshift(settings.company_email);
     if (!recipients.length) continue;
-    const yesterday = new Date(Date.now()-86400000).toISOString().slice(0,10);
+    const yesterday = toISTDateStr(new Date(Date.now()-86400000));
     const report = getReportForDate(outlet.id, yesterday);
     const html = buildEmailHtml(report, settings.outlet_name||outlet.name);
     const smtpUser=process.env.SMTP_USER||settings.company_email, smtpPass=process.env.SMTP_PASS;
@@ -48,7 +56,7 @@ async function sendTestReport() {
     let recipients=[]; try { recipients=JSON.parse(settings.partner_emails||'[]'); } catch {}
     if (settings.company_email) recipients.unshift(settings.company_email);
     if (!recipients.length) throw new Error('No recipients');
-    const today = new Date().toISOString().slice(0,10);
+    const today = toISTDateStr();
     const report = getReportForDate(outlet.id, today);
     const html = buildEmailHtml(report, settings.outlet_name||outlet.name);
     const smtpUser=process.env.SMTP_USER||settings.company_email, smtpPass=process.env.SMTP_PASS;
@@ -69,7 +77,7 @@ function startDailyReportCron() {
       const settings = getSettings(outlet.id);
       const reportTime = settings.daily_report_time || '06:00';
       const reportHour = parseInt(reportTime.split(':')[0]);
-      const currentHour = new Date().getHours();
+      const currentHour = toIST().getHours();
       if (currentHour === reportHour) {
         console.log(`[Cron] Sending daily report (configured time: ${reportTime})`);
         sendDailyReport().catch(e => console.error('[Cron]', e));

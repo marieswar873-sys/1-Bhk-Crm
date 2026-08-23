@@ -124,6 +124,8 @@ async function syncOrders(apiKey) {
       subtotal: o.subtotal,
       tax_amount: o.tax_amount,
       packing_charges: o.packing_charges,
+      discount_amount: o.discount_amount || 0,
+      discount_type: o.discount_type || 'flat',
       total: o.total,
       payment_method: o.payment_method,
       payment_status: o.payment_status,
@@ -142,9 +144,13 @@ async function syncOrders(apiKey) {
   console.log(`[Sync] Orders pushed — ${out.synced || 0} new (${orders.length} sent)`);
 }
 
+function toISTDateStr(d = new Date()) {
+  return new Date(d.getTime() + 5.5 * 60 * 60 * 1000).toISOString().slice(0, 10);
+}
+
 async function syncDailySummary(apiKey) {
   const db = getDb();
-  const today = new Date().toISOString().slice(0, 10);
+  const today = toISTDateStr();
   const s = db.prepare(`
     SELECT COUNT(*) AS total_orders,
       COALESCE(SUM(CASE WHEN payment_status='paid' THEN total ELSE 0 END), 0) AS total_revenue,

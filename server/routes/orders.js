@@ -4,8 +4,12 @@ const { getDb } = require('../db/schema');
 const { authMiddleware } = require('../middleware/auth');
 const router = express.Router();
 
+function toISTDateStr() {
+  return new Date(Date.now() + 5.5 * 60 * 60 * 1000).toISOString().slice(0, 10);
+}
+
 function generateOrderNumber(db, outletId) {
-  const today = new Date().toISOString().slice(0, 10).replace(/-/g, '');
+  const today = toISTDateStr().replace(/-/g, '');
   const c = db.prepare("SELECT COUNT(*) as c FROM orders WHERE outlet_id = ? AND created_at >= date('now')").get(outletId).c;
   return `ORD-${today}-${String(c + 1).padStart(4, '0')}`;
 }
@@ -13,14 +17,16 @@ function generateKotNumber(db, outletId) {
   const c = db.prepare("SELECT COUNT(*) as c FROM kot_tokens k JOIN orders o ON k.order_id = o.id WHERE o.outlet_id = ? AND k.printed_at >= date('now')").get(outletId).c;
   return c + 1;
 }
-function buildOrderItems(db, items, orderId, isTakeaway, packingEnabled) {
+function buildOrderItems(db, items, orderId, isTakeaway, packingEnabled, globalPackingCharge) {
   return items.map(item => {
     const mi = db.prepare('SELECT * FROM menu_items WHERE id = ?').get(item.menu_item_id);
     if (!mi) throw new Error(`Menu item ${item.menu_item_id} not found`);
     const unitPrice = mi.price + (item.price_delta || 0);
     const qty = item.quantity || 1;
     const taxAmt = Math.round(unitPrice * qty * (mi.tax_percent / 100) * 100) / 100;
-    const packChg = (isTakeaway && packingEnabled) ? (mi.packing_charge || 0) * qty : 0;
+    const overridePack = item.packing_charge_override != null ? parseFloat(item.packing_charge_override) : null;
+    const perItemPack = overridePack != null ? overridePack : (globalPackingCharge > 0 ? globalPackingCharge : (mi.packing_charge || 0));
+    const packChg = (isTakeaway && packingEnabled) ? perItemPack * qty : 0;
     return { id: uuid(), order_id: orderId, menu_item_id: item.menu_item_id, variant_id: item.variant_id||null, quantity: qty, unit_price: unitPrice, tax_percent: mi.tax_percent, tax_amount: taxAmt, total: Math.round((unitPrice*qty+taxAmt)*100)/100, packing_charge: Math.round(packChg*100)/100, notes: item.notes||null, name: mi.name };
   });
 }
@@ -41,7 +47,7 @@ router.post('/', authMiddleware, (req, res) => {
   try {
     const sett = {}; db.prepare('SELECT key, value FROM settings WHERE outlet_id = ?').all(req.user.outlet_id).forEach(r => sett[r.key]=r.value);
     const orderId = uuid(), orderNumber = generateOrderNumber(db, req.user.outlet_id);
-    const ois = buildOrderItems(db, items, orderId, order_type==='takeaway', sett.packing_enabled!=='false');
+    const ois = buildOrderItems(db, items, orderId, order_type==='takeaway', sett.packing_enabled!=='false', parseFloat(sett.packing_charges) || 0);
     let sub=0,tax=0,pack=0;
     for (const o of ois) { sub+=o.unit_price*o.quantity; tax+=o.tax_amount; pack+=o.packing_charge; }
     sub=Math.round(sub*100)/100; tax=Math.round(tax*100)/100; pack=Math.round(pack*100)/100;
@@ -69,7 +75,7 @@ router.post('/:id/kot', authMiddleware, (req, res) => {
   if (['completed','cancelled'].includes(order.status)) return res.status(400).json({ error: 'Order is '+order.status });
   try {
     const sett = {}; db.prepare('SELECT key, value FROM settings WHERE outlet_id = ?').all(req.user.outlet_id).forEach(r => sett[r.key]=r.value);
-    const ois = buildOrderItems(db, items, order.id, order.order_type==='takeaway', sett.packing_enabled!=='false');
+    const ois = buildOrderItems(db, items, order.id, order.order_type==='takeaway', sett.packing_enabled!=='false', parseFloat(sett.packing_charges) || 0);
     const result = db.transaction(() => {
       const kotId=uuid(), kotNum=generateKotNumber(db, req.user.outlet_id);
       db.prepare('INSERT INTO kot_tokens (id,order_id,token_number) VALUES (?,?,?)').run(kotId, order.id, kotNum);
@@ -106,8 +112,15 @@ router.get('/:id', authMiddleware, (req, res) => {
 });
 
 router.patch('/:id/bill-printed', authMiddleware, (req, res) => {
-  getDb().prepare('UPDATE orders SET bill_printed=1 WHERE id=? AND outlet_id=?').run(req.params.id, req.user.outlet_id);
-  res.json({ success: true });
+  const { discount_amount = 0, discount_type = 'flat', discount_value = 0 } = req.body;
+  const db = getDb();
+  const order = db.prepare('SELECT * FROM orders WHERE id=? AND outlet_id=?').get(req.params.id, req.user.outlet_id);
+  if (!order) return res.status(404).json({ error: 'Order not found' });
+  const disc = Math.round(parseFloat(discount_amount) * 100) / 100;
+  const newTotal = Math.round((order.subtotal + order.tax_amount + (order.packing_charges||0) - disc) * 100) / 100;
+  db.prepare('UPDATE orders SET bill_printed=1, discount_amount=?, discount_type=?, total=? WHERE id=?')
+    .run(disc, discount_type, newTotal, req.params.id);
+  res.json({ success: true, total: newTotal, discount_amount: disc });
 });
 
 router.patch('/:id/items/:itemId', authMiddleware, (req, res) => {
@@ -139,14 +152,22 @@ router.patch('/:id/status', authMiddleware, (req, res) => {
 });
 
 router.post('/:id/quick-pay', authMiddleware, (req, res) => {
-  const { method } = req.body;
+  const { method, discount_amount, discount_type } = req.body;
   if (!method) return res.status(400).json({ error: 'Payment method required' });
   const db = getDb();
   const order = db.prepare('SELECT * FROM orders WHERE id=? AND outlet_id=?').get(req.params.id, req.user.outlet_id);
   if (!order) return res.status(404).json({ error: 'Order not found' });
+  // Apply discount if passed (Bill & Pay buttons pass it directly)
+  let finalTotal = order.total;
+  if (discount_amount != null) {
+    const disc = Math.round(parseFloat(discount_amount) * 100) / 100;
+    finalTotal = Math.round((order.subtotal + order.tax_amount + (order.packing_charges||0) - disc) * 100) / 100;
+    db.prepare('UPDATE orders SET discount_amount=?, discount_type=?, total=? WHERE id=?')
+      .run(disc, discount_type || 'flat', finalTotal, order.id);
+  }
   db.transaction(() => {
-    db.prepare('INSERT INTO payments (id,order_id,method,amount) VALUES (?,?,?,?)').run(uuid(), order.id, method, order.total);
-    db.prepare("UPDATE orders SET payment_status='paid',payment_method=?,status='completed',completed_at=datetime('now') WHERE id=?").run(method, order.id);
+    db.prepare('INSERT INTO payments (id,order_id,method,amount) VALUES (?,?,?,?)').run(uuid(), order.id, method, finalTotal);
+    db.prepare("UPDATE orders SET payment_status='paid',payment_method=?,status='completed',completed_at=datetime('now'),bill_printed=1 WHERE id=?").run(method, order.id);
     if (order.table_id) db.prepare("UPDATE tables_config SET status='available' WHERE id=?").run(order.table_id);
   })();
   res.json({ success: true });

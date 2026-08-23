@@ -105,7 +105,8 @@ export default function Billing() {
     setNewItems(prev => {
       const existing = prev.find(c => c.cart_key === cartKey);
       if (existing) return prev.map(c => c.cart_key === cartKey ? { ...c, quantity: c.quantity + 1 } : c);
-      return [...prev, { cart_key: cartKey, menu_item_id: item.id, variant_id: variant?.id || null, name: label, price, base_price: item.price, tax_percent: item.tax_percent, quantity: 1, is_veg: item.is_veg, price_delta: variant?.price_delta || 0 }];
+      const packChg = parseFloat(settings.packing_charges) || item.packing_charge || 0;
+      return [...prev, { cart_key: cartKey, menu_item_id: item.id, variant_id: variant?.id || null, name: label, price, base_price: item.price, tax_percent: item.tax_percent, quantity: 1, is_veg: item.is_veg, price_delta: variant?.price_delta || 0, packing_charge: packChg }];
     });
     setVariantPopup(null);
   };
@@ -125,6 +126,11 @@ export default function Billing() {
     const p = parseFloat(newPrice);
     if (isNaN(p) || p < 0) return;
     setNewItems(prev => prev.map(c => c.cart_key !== cartKey ? c : { ...c, price: p }));
+  };
+
+  const updateNewPacking = (cartKey, val) => {
+    const p = parseFloat(val);
+    setNewItems(prev => prev.map(c => c.cart_key !== cartKey ? c : { ...c, packing_charge: isNaN(p) || p < 0 ? 0 : p }));
   };
 
   // Existing item edit (already in kitchen)
@@ -168,9 +174,10 @@ export default function Billing() {
   const existingPacking = existingItems.reduce((s, i) => s + (i.packing_charge || 0), 0);
   const newSubtotal = newItems.reduce((s, c) => s + c.price * c.quantity, 0);
   const newTax = gstEnabled ? newItems.reduce((s, c) => s + (c.price * c.quantity * c.tax_percent / 100), 0) : 0;
+  const newPacking = (packingEnabled && isTakeawayOrder) ? newItems.reduce((s, c) => s + (c.packing_charge || 0) * c.quantity, 0) : 0;
   const grandSubtotal = Math.round((existingSubtotal + newSubtotal) * 100) / 100;
   const grandTax = Math.round((existingTax + newTax) * 100) / 100;
-  const grandPacking = Math.round(existingPacking * 100) / 100;
+  const grandPacking = Math.round((existingPacking + newPacking) * 100) / 100;
   const discountAmt = Math.round((discountType === 'percent' ? (grandSubtotal * Math.min(parseFloat(discountValue) || 0, 100) / 100) : Math.min(parseFloat(discountValue) || 0, grandSubtotal)) * 100) / 100;
   const grandTotal = Math.round((grandSubtotal + grandTax + grandPacking - discountAmt) * 100) / 100;
 
@@ -279,7 +286,7 @@ export default function Billing() {
       const { data } = await api.post('/orders', {
         order_type: orderType, table_id: orderType === 'dine_in' ? tableId : null,
         customer_name: customerName || null, customer_phone: customerPhone || null,
-        items: newItems.map(c => ({ menu_item_id: c.menu_item_id, variant_id: c.variant_id, quantity: c.quantity, price_delta: c.price - c.base_price })),
+        items: newItems.map(c => ({ menu_item_id: c.menu_item_id, variant_id: c.variant_id, quantity: c.quantity, price_delta: c.price - c.base_price, packing_charge_override: c.packing_charge })),
       });
       toast.success(`Order ${data.order_number} — KOT #${data.kot_number}`);
       const table = tables.find(t => t.id === tableId);
@@ -295,7 +302,7 @@ export default function Billing() {
     if (!newItems.length || !currentOrder) return;
     try {
       const { data } = await api.post(`/orders/${currentOrder.id}/kot`, {
-        items: newItems.map(c => ({ menu_item_id: c.menu_item_id, variant_id: c.variant_id, quantity: c.quantity, price_delta: c.price - c.base_price })),
+        items: newItems.map(c => ({ menu_item_id: c.menu_item_id, variant_id: c.variant_id, quantity: c.quantity, price_delta: c.price - c.base_price, packing_charge_override: c.packing_charge })),
       });
       toast.success(`KOT #${data.kot_number} sent!`);
       const table = tables.find(t => t.id === currentOrder.table_id);
@@ -328,7 +335,7 @@ export default function Billing() {
     if (newItems.length > 0) return toast.error('Send pending items to kitchen first');
     printBill(applyDiscount(currentOrder), existingItems);
     await api.patch(`/orders/${currentOrder.id}/bill-printed`, { discount_amount: discountAmt, discount_type: discountType, discount_value: discountValue });
-    setCurrentOrder(prev => ({ ...prev, bill_printed: 1 }));
+    setCurrentOrder(prev => ({ ...prev, bill_printed: 1, discount_amount: discountAmt, total: grandTotal }));
     setMode('payment');
     toast.success('Bill printed');
   };
@@ -483,22 +490,22 @@ export default function Billing() {
               <button onClick={() => setSelectedCat('all')} style={btnStyle(selectedCat === 'all')}>All</button>
               {categories.map(c => <button key={c.id} onClick={() => setSelectedCat(c.id)} style={btnStyle(selectedCat === c.id)}>{c.name}</button>)}
             </div>
-            <div style={{ flex: 1, overflow: 'auto', display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(150px, 1fr))', gap: 8, alignContent: 'start' }}>
+            <div style={{ flex: 1, overflow: 'auto', display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(175px, 1fr))', gap: 10, alignContent: 'start' }}>
               {filteredItems.map(item => {
                 const hasV = item.variants?.length > 0;
                 const minP = hasV ? Math.min(item.price, ...item.variants.map(v => item.price + v.price_delta)) : item.price;
                 const maxP = hasV ? Math.max(...item.variants.map(v => item.price + v.price_delta)) : null;
                 return (
                   <div key={item.id} onClick={() => handleItemClick(item)} style={{
-                    background: '#fff', borderRadius: 8, padding: 12, cursor: 'pointer', border: '2px solid transparent',
-                    boxShadow: '0 1px 3px rgba(0,0,0,0.05)', transition: 'border-color 0.15s'
+                    background: '#fff', borderRadius: 10, padding: '14px 12px', cursor: 'pointer', border: '2px solid transparent',
+                    boxShadow: '0 1px 4px rgba(0,0,0,0.07)', transition: 'border-color 0.15s'
                   }} onMouseEnter={e => e.currentTarget.style.borderColor = '#4fc3f7'} onMouseLeave={e => e.currentTarget.style.borderColor = 'transparent'}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 4, marginBottom: 4 }}>
-                      <span style={{ width: 8, height: 8, borderRadius: 2, background: item.is_veg ? '#4caf50' : '#f44336' }} />
-                      <span style={{ fontSize: 11, fontWeight: 600, color: '#1a1a2e', lineHeight: 1.2 }}>{item.name}</span>
+                    <div style={{ display: 'flex', alignItems: 'flex-start', gap: 6, marginBottom: 6 }}>
+                      <span style={{ width: 10, height: 10, borderRadius: 2, background: item.is_veg ? '#4caf50' : '#f44336', flexShrink: 0, marginTop: 2 }} />
+                      <span style={{ fontSize: 13, fontWeight: 600, color: '#1a1a2e', lineHeight: 1.3 }}>{item.name}</span>
                     </div>
-                    <div style={{ fontSize: 13, fontWeight: 700, color: '#4fc3f7' }}>₹{minP}{maxP ? `–₹${maxP}` : ''}</div>
-                    {hasV && <div style={{ fontSize: 9, color: '#ff9800', fontWeight: 600 }}>{item.variants.length} sizes</div>}
+                    <div style={{ fontSize: 15, fontWeight: 700, color: '#1976d2' }}>₹{minP}{maxP ? `–₹${maxP}` : ''}</div>
+                    {hasV && <div style={{ fontSize: 10, color: '#ff9800', fontWeight: 600, marginTop: 2 }}>{item.variants.length} sizes</div>}
                   </div>
                 );
               })}
@@ -576,11 +583,17 @@ export default function Billing() {
                   <div key={item.cart_key} style={{ display: 'flex', alignItems: 'center', padding: '6px 0', borderBottom: '1px solid #f0f0f0' }}>
                     <div style={{ flex: 1, minWidth: 0 }}>
                       <div style={{ fontSize: 11, fontWeight: 600, color: '#1a1a2e' }}>{item.is_veg ? '🟢' : '🔴'} {item.name}</div>
-                      <div style={{ fontSize: 10, color: '#888', display: 'flex', alignItems: 'center', gap: 2 }}>
+                      <div style={{ fontSize: 10, color: '#888', display: 'flex', alignItems: 'center', gap: 2, flexWrap: 'wrap' }}>
                         ₹<input type="number" value={item.price} onChange={e => updateNewPrice(item.cart_key, e.target.value)}
                           style={{ width: 45, border: '1px solid #ddd', borderRadius: 3, padding: '1px 3px', fontSize: 10, textAlign: 'center' }} />
                         × {item.quantity} = ₹{(item.price * item.quantity).toFixed(0)}
                       </div>
+                      {packingEnabled && isTakeawayOrder && (
+                        <div style={{ fontSize: 10, color: '#ff9800', display: 'flex', alignItems: 'center', gap: 2 }}>
+                          📦₹<input type="number" value={item.packing_charge} onChange={e => updateNewPacking(item.cart_key, e.target.value)}
+                            style={{ width: 36, border: '1px solid #ffcc80', borderRadius: 3, padding: '1px 3px', fontSize: 10, textAlign: 'center' }} title="Packing charge per item" />
+                        </div>
+                      )}
                     </div>
                     <div style={{ display: 'flex', alignItems: 'center', gap: 3, flexShrink: 0 }}>
                       <button onClick={() => updateNewQty(item.cart_key, -1)} style={{ width: 22, height: 22, borderRadius: '50%', border: '1px solid #ddd', background: '#fff', cursor: 'pointer', fontSize: 13 }}>−</button>

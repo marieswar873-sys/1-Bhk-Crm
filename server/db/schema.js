@@ -97,6 +97,44 @@ function initDb() {
     CREATE TABLE IF NOT EXISTS sync_log (
       id TEXT PRIMARY KEY, table_name TEXT NOT NULL, last_synced TEXT DEFAULT (datetime('now'))
     );
+    CREATE TABLE IF NOT EXISTS inventory_items (
+      id TEXT PRIMARY KEY, outlet_id TEXT NOT NULL REFERENCES outlets(id),
+      name TEXT NOT NULL, unit TEXT NOT NULL DEFAULT 'kg',
+      current_stock REAL DEFAULT 0, min_stock REAL DEFAULT 0,
+      cost_per_unit REAL DEFAULT 0, category TEXT DEFAULT 'General',
+      created_at TEXT DEFAULT (datetime('now'))
+    );
+    CREATE TABLE IF NOT EXISTS inventory_transactions (
+      id TEXT PRIMARY KEY, item_id TEXT NOT NULL REFERENCES inventory_items(id),
+      outlet_id TEXT NOT NULL REFERENCES outlets(id),
+      type TEXT NOT NULL CHECK(type IN ('stock_in','stock_out','adjustment')),
+      quantity REAL NOT NULL, notes TEXT, created_by TEXT REFERENCES users(id),
+      created_at TEXT DEFAULT (datetime('now'))
+    );
+
+    CREATE TABLE IF NOT EXISTS platform_sales (
+      id TEXT PRIMARY KEY,
+      outlet_id TEXT NOT NULL,
+      platform TEXT NOT NULL CHECK(platform IN ('swiggy','zomato')),
+      date TEXT NOT NULL,
+      orders INTEGER DEFAULT 0,
+      gross_revenue REAL DEFAULT 0,
+      commission REAL DEFAULT 0,
+      packing_charges REAL DEFAULT 0,
+      taxes_withheld REAL DEFAULT 0,
+      net_payout REAL DEFAULT 0,
+      raw_data TEXT,
+      scraped_at TEXT DEFAULT (datetime('now')),
+      UNIQUE(outlet_id, platform, date)
+    );
+    CREATE TABLE IF NOT EXISTS platform_sessions (
+      id TEXT PRIMARY KEY,
+      outlet_id TEXT NOT NULL,
+      platform TEXT NOT NULL CHECK(platform IN ('swiggy','zomato')),
+      cookies TEXT,
+      last_login TEXT,
+      UNIQUE(outlet_id, platform)
+    );
 
     CREATE INDEX IF NOT EXISTS idx_orders_outlet ON orders(outlet_id);
     CREATE INDEX IF NOT EXISTS idx_orders_date ON orders(created_at);

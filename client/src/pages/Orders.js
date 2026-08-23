@@ -86,52 +86,93 @@ export default function Orders() {
 
       {detail && (
         <div style={{
-          width: 360, background: '#fff', borderRadius: 12, padding: 20,
-          boxShadow: '0 2px 12px rgba(0,0,0,0.08)', overflow: 'auto'
+          width: 380, background: '#fff', borderRadius: 12,
+          boxShadow: '0 2px 12px rgba(0,0,0,0.08)', overflow: 'auto', display: 'flex', flexDirection: 'column'
         }}>
-          <h3 style={{ margin: '0 0 4px' }}>{detail.order_number}</h3>
-          <div style={{ fontSize: 12, color: '#888', marginBottom: 16 }}>
-            {typeLabels[detail.order_type]} · {new Date(detail.created_at).toLocaleString()}
+          {/* Bill Header */}
+          <div style={{ background: '#1a1a2e', color: '#fff', padding: '16px 20px', borderRadius: '12px 12px 0 0' }}>
+            <div style={{ fontWeight: 700, fontSize: 16 }}>{detail.order_number}</div>
+            <div style={{ fontSize: 12, color: '#aaa', marginTop: 2 }}>
+              {typeLabels[detail.order_type]} · {new Date(detail.created_at).toLocaleString('en-IN', { day:'2-digit', month:'short', year:'numeric', hour:'2-digit', minute:'2-digit' })}
+            </div>
+            {detail.customer_name && <div style={{ fontSize: 12, color: '#ccc', marginTop: 2 }}>👤 {detail.customer_name}{detail.customer_phone ? ` · ${detail.customer_phone}` : ''}</div>}
           </div>
 
-          {detail.items?.map(item => (
-            <div key={item.id} style={{ display: 'flex', justifyContent: 'space-between', padding: '8px 0', borderBottom: '1px solid #f5f5f5', fontSize: 13 }}>
-              <span>{item.is_veg ? '🟢' : '🔴'} {item.item_name} × {item.quantity}</span>
-              <span style={{ fontWeight: 600 }}>₹{item.total}</span>
+          <div style={{ padding: '16px 20px', flex: 1 }}>
+            {/* Items Table */}
+            <div style={{ marginBottom: 12 }}>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr auto auto auto', gap: '4px 10px', fontSize: 11, fontWeight: 700, color: '#888', textTransform: 'uppercase', paddingBottom: 6, borderBottom: '1px solid #e8e8e8', marginBottom: 6 }}>
+                <span>Item</span><span style={{ textAlign: 'right' }}>Qty</span><span style={{ textAlign: 'right' }}>Rate</span><span style={{ textAlign: 'right' }}>Amt</span>
+              </div>
+              {detail.items?.map(item => (
+                <div key={item.id} style={{ display: 'grid', gridTemplateColumns: '1fr auto auto auto', gap: '3px 10px', padding: '5px 0', borderBottom: '1px solid #f8f8f8', fontSize: 13, alignItems: 'center' }}>
+                  <span style={{ color: '#1a1a2e', fontWeight: 500 }}>
+                    <span style={{ fontSize: 8, marginRight: 4 }}>{item.is_veg ? '🟢' : '🔴'}</span>
+                    {item.item_name}{item.variant_name ? ` (${item.variant_name})` : ''}
+                  </span>
+                  <span style={{ textAlign: 'right', color: '#555' }}>{item.quantity}</span>
+                  <span style={{ textAlign: 'right', color: '#555' }}>₹{item.unit_price}</span>
+                  <span style={{ textAlign: 'right', fontWeight: 600 }}>₹{(item.unit_price * item.quantity).toFixed(2)}</span>
+                </div>
+              ))}
             </div>
-          ))}
 
-          <div style={{ borderTop: '2px solid #1a1a2e', marginTop: 12, paddingTop: 12 }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13, marginBottom: 4 }}>
-              <span>Subtotal</span><span>₹{detail.subtotal}</span>
+            {/* Totals */}
+            <div style={{ borderTop: '2px dashed #ddd', paddingTop: 10 }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13, color: '#555', marginBottom: 4 }}>
+                <span>Subtotal ({detail.items?.reduce((s,i)=>s+i.quantity,0)} items)</span>
+                <span>₹{parseFloat(detail.subtotal).toFixed(2)}</span>
+              </div>
+              {parseFloat(detail.tax_amount) > 0 && <>
+                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12, color: '#888', marginBottom: 3 }}>
+                  <span>CGST</span><span>₹{(detail.tax_amount / 2).toFixed(2)}</span>
+                </div>
+                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12, color: '#888', marginBottom: 3 }}>
+                  <span>SGST</span><span>₹{(detail.tax_amount / 2).toFixed(2)}</span>
+                </div>
+              </>}
+              {parseFloat(detail.packing_charges) > 0 && (
+                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12, color: '#ff9800', marginBottom: 3 }}>
+                  <span>📦 Packing</span><span>₹{parseFloat(detail.packing_charges).toFixed(2)}</span>
+                </div>
+              )}
+              {parseFloat(detail.discount_amount) > 0 && (
+                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12, color: '#e53935', marginBottom: 3 }}>
+                  <span>🏷️ Discount{detail.discount_type === 'percent' && detail.discount_value ? ` (${detail.discount_value}%)` : ''}</span>
+                  <span>-₹{parseFloat(detail.discount_amount).toFixed(2)}</span>
+                </div>
+              )}
+              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 20, fontWeight: 800, color: '#1a1a2e', borderTop: '2px solid #1a1a2e', paddingTop: 8, marginTop: 6 }}>
+                <span>TOTAL</span><span>₹{parseFloat(detail.total).toFixed(2)}</span>
+              </div>
             </div>
-            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13, marginBottom: 4 }}>
-              <span>CGST</span><span>₹{(detail.tax_amount / 2).toFixed(2)}</span>
-            </div>
-            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13, marginBottom: 8 }}>
-              <span>SGST</span><span>₹{(detail.tax_amount / 2).toFixed(2)}</span>
-            </div>
-            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 18, fontWeight: 700 }}>
-              <span>Total</span><span>₹{detail.total}</span>
-            </div>
-          </div>
 
-          <div style={{ display: 'flex', gap: 6, marginTop: 16, flexWrap: 'wrap' }}>
-            {detail.status === 'active' && <button onClick={() => updateStatus(detail.id, 'preparing')}
-              style={{ padding: '8px 14px', background: '#ff9800', color: '#fff', border: 'none', borderRadius: 6, cursor: 'pointer', fontSize: 12, fontWeight: 600 }}>Mark Preparing</button>}
-            {detail.status === 'preparing' && <button onClick={() => updateStatus(detail.id, 'ready')}
-              style={{ padding: '8px 14px', background: '#4caf50', color: '#fff', border: 'none', borderRadius: 6, cursor: 'pointer', fontSize: 12, fontWeight: 600 }}>Mark Ready</button>}
-            {detail.status === 'ready' && <button onClick={() => updateStatus(detail.id, 'served')}
-              style={{ padding: '8px 14px', background: '#9c27b0', color: '#fff', border: 'none', borderRadius: 6, cursor: 'pointer', fontSize: 12, fontWeight: 600 }}>Mark Served</button>}
-            {!['completed', 'cancelled'].includes(detail.status) && (
-              <button onClick={() => updateStatus(detail.id, 'cancelled')}
-                style={{ padding: '8px 14px', background: '#f44336', color: '#fff', border: 'none', borderRadius: 6, cursor: 'pointer', fontSize: 12, fontWeight: 600 }}>Cancel</button>
-            )}
-          </div>
+            {/* Payment Badge */}
+            <div style={{ marginTop: 12, display: 'flex', alignItems: 'center', gap: 8 }}>
+              <span style={{
+                padding: '4px 12px', borderRadius: 20, fontSize: 12, fontWeight: 700,
+                background: detail.payment_status === 'paid' ? '#e8f5e9' : '#fff3e0',
+                color: detail.payment_status === 'paid' ? '#2e7d32' : '#e65100'
+              }}>
+                {detail.payment_status === 'paid' ? '✓ PAID' : 'PENDING'}
+              </span>
+              {detail.payment_method && <span style={{ fontSize: 12, color: '#888' }}>via {detail.payment_method.toUpperCase()}</span>}
+              {detail.bill_printed ? <span style={{ fontSize: 11, color: '#1976d2', fontWeight: 600 }}>🖨️ Bill Printed</span> : null}
+            </div>
 
-          <div style={{ marginTop: 12, fontSize: 12, color: '#888' }}>
-            Payment: <b style={{ color: detail.payment_status === 'paid' ? '#4caf50' : '#ff9800' }}>{detail.payment_status}</b>
-            {detail.payment_method && ` via ${detail.payment_method}`}
+            {/* Status Actions */}
+            <div style={{ display: 'flex', gap: 6, marginTop: 14, flexWrap: 'wrap' }}>
+              {detail.status === 'active' && <button onClick={() => updateStatus(detail.id, 'preparing')}
+                style={{ padding: '8px 14px', background: '#ff9800', color: '#fff', border: 'none', borderRadius: 6, cursor: 'pointer', fontSize: 12, fontWeight: 600 }}>Mark Preparing</button>}
+              {detail.status === 'preparing' && <button onClick={() => updateStatus(detail.id, 'ready')}
+                style={{ padding: '8px 14px', background: '#4caf50', color: '#fff', border: 'none', borderRadius: 6, cursor: 'pointer', fontSize: 12, fontWeight: 600 }}>Mark Ready</button>}
+              {detail.status === 'ready' && <button onClick={() => updateStatus(detail.id, 'served')}
+                style={{ padding: '8px 14px', background: '#9c27b0', color: '#fff', border: 'none', borderRadius: 6, cursor: 'pointer', fontSize: 12, fontWeight: 600 }}>Mark Served</button>}
+              {!['completed', 'cancelled'].includes(detail.status) && (
+                <button onClick={() => updateStatus(detail.id, 'cancelled')}
+                  style={{ padding: '8px 14px', background: '#f44336', color: '#fff', border: 'none', borderRadius: 6, cursor: 'pointer', fontSize: 12, fontWeight: 600 }}>Cancel</button>
+              )}
+            </div>
           </div>
         </div>
       )}

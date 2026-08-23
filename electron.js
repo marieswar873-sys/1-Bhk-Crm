@@ -143,6 +143,16 @@ function createWindow() {
     autoHideMenuBar: true,
   });
 
+  // DEV mode: load from React dev server (port 3000) for hot-reload
+  // Usage: DEV=1 npm run electron  (run `npm start` in client/ separately)
+  const DEV = process.env.DEV === '1';
+  if (DEV) {
+    mainWindow.loadURL('http://localhost:3000');
+    mainWindow.webContents.openDevTools();
+    mainWindow.show();
+    return;
+  }
+
   // Wait for server to be ready, then load
   const checkServer = () => {
     const http = require('http');

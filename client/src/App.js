@@ -13,6 +13,8 @@ import MenuManagement from './pages/MenuManagement';
 import Import from './pages/Import';
 import Reports from './pages/Reports';
 import Settings from './pages/Settings';
+import Inventory from './pages/Inventory';
+import PlatformSync from './pages/PlatformSync';
 
 function ProtectedRoute({ children }) {
   const { user, loading } = useAuth();
@@ -38,6 +40,8 @@ function App() {
             <Route path="import" element={<Import />} />
             <Route path="reports" element={<Reports />} />
             <Route path="settings" element={<Settings />} />
+            <Route path="inventory" element={<Inventory />} />
+            <Route path="platform" element={<PlatformSync />} />
           </Route>
         </Routes>
       </HashRouter>

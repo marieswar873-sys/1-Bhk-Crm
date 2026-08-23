@@ -1,6 +1,6 @@
 import { NavLink, Outlet, useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
-import { FiHome, FiShoppingCart, FiGrid, FiList, FiBarChart2, FiUpload, FiLogOut, FiMenu, FiSettings } from 'react-icons/fi';
+import { FiHome, FiShoppingCart, FiGrid, FiList, FiBarChart2, FiUpload, FiLogOut, FiMenu, FiSettings, FiPackage, FiRefreshCw } from 'react-icons/fi';
 import { useState } from 'react';
 import logo from '../logo.png';
 
@@ -12,6 +12,8 @@ const navItems = [
   { to: '/menu', icon: FiMenu, label: 'Menu' },
   { to: '/import', icon: FiUpload, label: 'Import' },
   { to: '/reports', icon: FiBarChart2, label: 'Reports' },
+  { to: '/inventory', icon: FiPackage, label: 'Inventory' },
+  { to: '/platform', icon: FiRefreshCw, label: 'Platforms' },
   { to: '/settings', icon: FiSettings, label: 'Settings' },
 ];
 

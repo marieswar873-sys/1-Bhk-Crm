@@ -82,6 +82,44 @@ app.use('/api/import', require('./routes/csv-import'));
 app.use('/api/invoice', require('./routes/invoice'));
 app.use('/api/settings', require('./routes/settings'));
 app.use('/api/public', require('./routes/public'));
+app.use('/api/inventory', require('./routes/inventory'));
+app.use('/api/platform', require('./routes/platform-sync'));
+
+// Poll for scrape requests triggered via the UI
+setInterval(async () => {
+  if (!global.pendingScrape) return;
+  const { platform } = global.pendingScrape;
+  global.pendingScrape = null;
+  try {
+    const { authMiddleware } = require('./middleware/auth');
+    if (platform === 'swiggy') {
+      const { runSwiggy } = require('./services/swiggy-scraper');
+      await runSwiggy({
+        sendOtpRequest: () => { global.otpNeeded = { platform: 'swiggy' }; },
+        onStatus: (s) => { global.scrapeStatus = { platform, status: s }; console.log('[Swiggy]', s); },
+      });
+    } else if (platform === 'zomato') {
+      const { runZomato } = require('./services/zomato-scraper');
+      await runZomato({
+        sendOtpRequest: () => { global.otpNeeded = { platform: 'zomato' }; },
+        onStatus: (s) => { global.scrapeStatus = { platform, status: s }; console.log('[Zomato]', s); },
+      });
+    }
+    global.scrapeStatus = { platform, status: 'Done! Data saved.' };
+  } catch (e) {
+    global.scrapeStatus = { platform, status: 'Error: ' + e.message };
+    console.error('[Scrape]', e.message);
+  }
+}, 2000);
+
+// Endpoint to poll scrape status + OTP needed flag from UI
+app.get('/api/platform/scrape-status', (req, res) => {
+  res.json({ status: global.scrapeStatus || null, otpNeeded: global.otpNeeded || null });
+});
+app.post('/api/platform/otp-clear', (req, res) => {
+  global.otpNeeded = null;
+  res.json({ success: true });
+});
 
 app.post('/api/reports/send-daily', authMiddleware, requireRole('admin'), async (req, res) => {
   try { await sendTestReport(); res.json({ success: true, message: "Report sent!" }); }
