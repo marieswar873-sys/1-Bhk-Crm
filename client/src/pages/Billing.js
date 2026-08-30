@@ -61,7 +61,9 @@ export default function Billing() {
   const [newItems, setNewItems] = useState([]);
   const [variantPopup, setVariantPopup] = useState(null);
   const [discountType, setDiscountType] = useState('flat'); // flat | percent
-  const [discountValue, setDiscountValue] = useState(0);
+  const [discountValue, setDiscountValue] = useState('');
+  const [editingPrices, setEditingPrices] = useState({}); // cartKey → raw string while typing
+  const [kotLoading, setKotLoading] = useState(false);
 
   const loadMenu = () => {
     Promise.all([api.get('/menu/items'), api.get('/menu/categories'), api.get('/tables'), api.get('/settings')])
@@ -122,10 +124,20 @@ export default function Billing() {
 
   const removeNew = (cartKey) => setNewItems(prev => prev.filter(c => c.cart_key !== cartKey));
 
-  const updateNewPrice = (cartKey, newPrice) => {
-    const p = parseFloat(newPrice);
-    if (isNaN(p) || p < 0) return;
-    setNewItems(prev => prev.map(c => c.cart_key !== cartKey ? c : { ...c, price: p }));
+  const updateNewPrice = (cartKey, val) => {
+    // Keep raw string while typing so the user can clear and retype
+    setEditingPrices(prev => ({ ...prev, [cartKey]: val }));
+  };
+
+  const commitNewPrice = (cartKey) => {
+    const val = editingPrices[cartKey];
+    if (val !== undefined) {
+      const p = parseFloat(val);
+      if (!isNaN(p) && p >= 0) {
+        setNewItems(prev => prev.map(c => c.cart_key !== cartKey ? c : { ...c, price: p }));
+      }
+      setEditingPrices(prev => { const n = { ...prev }; delete n[cartKey]; return n; });
+    }
   };
 
   const updateNewPacking = (cartKey, val) => {
@@ -279,8 +291,10 @@ export default function Billing() {
 
   // Send to Kitchen (new order)
   const sendToKitchen = async () => {
+    if (kotLoading) return;
     if (!newItems.length) return toast.error('Add items first');
     if (orderType === 'dine_in' && !tableId) return toast.error('Select a table');
+    setKotLoading(true);
 
     try {
       const { data } = await api.post('/orders', {
@@ -295,11 +309,13 @@ export default function Billing() {
       loadActiveOrders();
       loadMenu();
     } catch (err) { toast.error(err.response?.data?.error || 'Failed'); }
+    finally { setKotLoading(false); }
   };
 
   // Send additional KOT
   const sendAdditionalKot = async () => {
-    if (!newItems.length || !currentOrder) return;
+    if (!newItems.length || !currentOrder || kotLoading) return;
+    setKotLoading(true);
     try {
       const { data } = await api.post(`/orders/${currentOrder.id}/kot`, {
         items: newItems.map(c => ({ menu_item_id: c.menu_item_id, variant_id: c.variant_id, quantity: c.quantity, price_delta: c.price - c.base_price, packing_charge_override: c.packing_charge })),
@@ -310,6 +326,7 @@ export default function Billing() {
       await loadOrder(currentOrder.id);
       loadActiveOrders();
     } catch (err) { toast.error(err.response?.data?.error || 'Failed'); }
+    finally { setKotLoading(false); }
   };
 
   // Save Order (just refresh totals, no print)
@@ -375,8 +392,10 @@ export default function Billing() {
     setCustomerPhone('');
     setTableId('');
     setOrderType('takeaway');
-    setDiscountValue(0);
+    setDiscountValue('');
     setDiscountType('flat');
+    setEditingPrices({});
+    setKotLoading(false);
   };
 
   const [mobileTab, setMobileTab] = useState('menu'); // orders | menu | cart
@@ -584,8 +603,12 @@ export default function Billing() {
                     <div style={{ flex: 1, minWidth: 0 }}>
                       <div style={{ fontSize: 11, fontWeight: 600, color: '#1a1a2e' }}>{item.is_veg ? '🟢' : '🔴'} {item.name}</div>
                       <div style={{ fontSize: 10, color: '#888', display: 'flex', alignItems: 'center', gap: 2, flexWrap: 'wrap' }}>
-                        ₹<input type="number" value={item.price} onChange={e => updateNewPrice(item.cart_key, e.target.value)}
-                          style={{ width: 45, border: '1px solid #ddd', borderRadius: 3, padding: '1px 3px', fontSize: 10, textAlign: 'center' }} />
+                        ₹<input type="number"
+                          value={editingPrices[item.cart_key] !== undefined ? editingPrices[item.cart_key] : item.price}
+                          onChange={e => updateNewPrice(item.cart_key, e.target.value)}
+                          onBlur={() => commitNewPrice(item.cart_key)}
+                          onKeyDown={e => e.key === 'Enter' && commitNewPrice(item.cart_key)}
+                          style={{ width: 52, border: '1px solid #4fc3f7', borderRadius: 3, padding: '2px 4px', fontSize: 11, textAlign: 'center', background: '#f0faff' }} />
                         × {item.quantity} = ₹{(item.price * item.quantity).toFixed(0)}
                       </div>
                       {packingEnabled && isTakeawayOrder && (
@@ -648,17 +671,17 @@ export default function Billing() {
           {/* Action Buttons */}
           <div style={{ marginTop: 10, display: 'flex', flexDirection: 'column', gap: 6 }}>
             {mode === 'new_order' && (
-              <button onClick={sendToKitchen} disabled={!newItems.length} style={{
-                padding: 12, background: newItems.length ? '#ff9800' : '#ccc', color: '#fff',
-                border: 'none', borderRadius: 8, fontSize: 14, fontWeight: 700, cursor: newItems.length ? 'pointer' : 'default'
-              }}>🔥 Send to Kitchen (KOT)</button>
+              <button onClick={sendToKitchen} disabled={!newItems.length || kotLoading} style={{
+                padding: 12, background: (newItems.length && !kotLoading) ? '#ff9800' : '#ccc', color: '#fff',
+                border: 'none', borderRadius: 8, fontSize: 14, fontWeight: 700, cursor: (newItems.length && !kotLoading) ? 'pointer' : 'default'
+              }}>{kotLoading ? '⏳ Sending...' : '🔥 Send to Kitchen (KOT)'}</button>
             )}
             {mode === 'active_order' && (
               <>
                 {newItems.length > 0 && (
-                  <button onClick={sendAdditionalKot} style={{
-                    padding: 12, background: '#ff9800', color: '#fff', border: 'none', borderRadius: 8, fontSize: 14, fontWeight: 700, cursor: 'pointer'
-                  }}>🔥 Send KOT ({newItems.length} new items)</button>
+                  <button onClick={sendAdditionalKot} disabled={kotLoading} style={{
+                    padding: 12, background: kotLoading ? '#ccc' : '#ff9800', color: '#fff', border: 'none', borderRadius: 8, fontSize: 14, fontWeight: 700, cursor: kotLoading ? 'default' : 'pointer'
+                  }}>{kotLoading ? '⏳ Sending...' : `🔥 Send KOT (${newItems.length} new items)`}</button>
                 )}
                 <button onClick={saveOrder} style={{
                   padding: 10, background: '#1a1a2e', color: '#fff', border: 'none', borderRadius: 8, fontSize: 13, fontWeight: 600, cursor: 'pointer'
