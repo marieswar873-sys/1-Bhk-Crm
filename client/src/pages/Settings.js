@@ -35,10 +35,10 @@ export default function Settings() {
 
   const save = async () => {
     try {
-      await api.put('/settings', settings);
-      toast.success('Settings saved');
+      const { data } = await api.put('/settings', settings);
+      toast.success(`Settings saved (${data.saved ?? '?'} fields)`);
     } catch (err) {
-      toast.error(err.response?.data?.error || 'Failed');
+      toast.error(err.response?.data?.error || err.message || 'Save failed');
     }
   };
 

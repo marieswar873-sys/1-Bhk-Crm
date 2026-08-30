@@ -11,9 +11,30 @@ router.get('/', authMiddleware, (req, res) => {
   res.json(s);
 });
 router.put('/', authMiddleware, requireRole('admin','manager'), (req, res) => {
-  const db = getDb();
-  const upsert = db.prepare('INSERT INTO settings (id,outlet_id,key,value) VALUES (?,?,?,?) ON CONFLICT(outlet_id,key) DO UPDATE SET value=excluded.value');
-  db.transaction(() => { for (const [k,v] of Object.entries(req.body)) { if (DEFAULTS.hasOwnProperty(k)) upsert.run(uuid(), req.user.outlet_id, k, String(v)); } })();
-  res.json({ success: true });
+  try {
+    const db = getDb();
+    const outlet_id = req.user.outlet_id;
+    if (!outlet_id) return res.status(400).json({ error: 'No outlet_id on user — please log out and log in again.' });
+
+    // Verify the outlet exists
+    const outlet = db.prepare('SELECT id FROM outlets WHERE id = ?').get(outlet_id);
+    if (!outlet) return res.status(400).json({ error: `Outlet not found (${outlet_id}) — DB may have been reset. Please log out and log in again.` });
+
+    const upsert = db.prepare('INSERT INTO settings (id,outlet_id,key,value) VALUES (?,?,?,?) ON CONFLICT(outlet_id,key) DO UPDATE SET value=excluded.value');
+    let saved = 0;
+    db.transaction(() => {
+      for (const [k, v] of Object.entries(req.body)) {
+        if (DEFAULTS.hasOwnProperty(k)) {
+          upsert.run(uuid(), outlet_id, k, String(v ?? ''));
+          saved++;
+        }
+      }
+    })();
+    console.log(`[Settings] Saved ${saved} keys for outlet ${outlet_id}`);
+    res.json({ success: true, saved });
+  } catch (err) {
+    console.error('[Settings PUT error]', err.message);
+    res.status(500).json({ error: err.message });
+  }
 });
 module.exports = router;
