@@ -32,29 +32,33 @@ function buildOrderItems(db, items, orderId, isTakeaway, packingEnabled, globalP
 }
 function recalcTotals(db, orderId) {
   const items = db.prepare('SELECT * FROM order_items WHERE order_id = ?').all(orderId);
+  const order = db.prepare('SELECT delivery_charges FROM orders WHERE id=?').get(orderId);
   let sub=0,tax=0,pack=0;
   for (const i of items) { sub+=i.unit_price*i.quantity; tax+=i.tax_amount; pack+=(i.packing_charge||0); }
   sub=Math.round(sub*100)/100; tax=Math.round(tax*100)/100; pack=Math.round(pack*100)/100;
-  const total=Math.round((sub+tax+pack)*100)/100;
+  const delivery=Math.round(((order?.delivery_charges)||0)*100)/100;
+  const total=Math.round((sub+tax+pack+delivery)*100)/100;
   db.prepare('UPDATE orders SET subtotal=?,tax_amount=?,packing_charges=?,total=? WHERE id=?').run(sub,tax,pack,total,orderId);
-  return { subtotal:sub, taxAmount:tax, packingTotal:pack, total };
+  return { subtotal:sub, taxAmount:tax, packingTotal:pack, deliveryCharges:delivery, total };
 }
 
 router.post('/', authMiddleware, (req, res) => {
-  const { order_type, table_id, customer_name, customer_phone, items, notes } = req.body;
+  const { order_type, table_id, customer_name, customer_phone, items, notes, delivery_charges } = req.body;
   if (!order_type || !items?.length) return res.status(400).json({ error: 'Order type and items required' });
   const db = getDb();
   try {
     const sett = {}; db.prepare('SELECT key, value FROM settings WHERE outlet_id = ?').all(req.user.outlet_id).forEach(r => sett[r.key]=r.value);
     const orderId = uuid(), orderNumber = generateOrderNumber(db, req.user.outlet_id);
-    const ois = buildOrderItems(db, items, orderId, order_type==='takeaway', sett.packing_enabled!=='false', parseFloat(sett.packing_charges) || 0);
+    const isTakeawayLike = order_type==='takeaway' || order_type==='delivery';
+    const ois = buildOrderItems(db, items, orderId, isTakeawayLike, sett.packing_enabled!=='false', parseFloat(sett.packing_charges) || 0);
     let sub=0,tax=0,pack=0;
     for (const o of ois) { sub+=o.unit_price*o.quantity; tax+=o.tax_amount; pack+=o.packing_charge; }
     sub=Math.round(sub*100)/100; tax=Math.round(tax*100)/100; pack=Math.round(pack*100)/100;
-    const total=Math.round((sub+tax+pack)*100)/100;
+    const delivery=Math.round((parseFloat(delivery_charges)||0)*100)/100;
+    const total=Math.round((sub+tax+pack+delivery)*100)/100;
 
     const result = db.transaction(() => {
-      db.prepare('INSERT INTO orders (id,outlet_id,order_number,order_type,table_id,customer_name,customer_phone,subtotal,tax_amount,packing_charges,total,notes,created_by) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)').run(orderId, req.user.outlet_id, orderNumber, order_type, table_id||null, customer_name||null, customer_phone||null, sub, tax, pack, total, notes||null, req.user.id);
+      db.prepare('INSERT INTO orders (id,outlet_id,order_number,order_type,table_id,customer_name,customer_phone,subtotal,tax_amount,packing_charges,delivery_charges,total,notes,created_by) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)').run(orderId, req.user.outlet_id, orderNumber, order_type, table_id||null, customer_name||null, customer_phone||null, sub, tax, pack, delivery, total, notes||null, req.user.id);
       const kotId = uuid(), kotNum = generateKotNumber(db, req.user.outlet_id);
       db.prepare('INSERT INTO kot_tokens (id,order_id,token_number) VALUES (?,?,?)').run(kotId, orderId, kotNum);
       const ins = db.prepare('INSERT INTO order_items (id,order_id,menu_item_id,variant_id,quantity,unit_price,tax_percent,tax_amount,total,notes,kot_id,packing_charge) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)');
@@ -62,7 +66,7 @@ router.post('/', authMiddleware, (req, res) => {
       if (table_id && order_type==='dine_in') db.prepare("UPDATE tables_config SET status='occupied' WHERE id=?").run(table_id);
       return { kotId, kotNum };
     })();
-    res.status(201).json({ id:orderId, order_number:orderNumber, kot_number:result.kotNum, kot_id:result.kotId, order_type, subtotal:sub, tax_amount:tax, total, items:ois.map(o=>({id:o.id,name:o.name,quantity:o.quantity,unit_price:o.unit_price,total:o.total})) });
+    res.status(201).json({ id:orderId, order_number:orderNumber, kot_number:result.kotNum, kot_id:result.kotId, order_type, subtotal:sub, tax_amount:tax, packing_charges:pack, delivery_charges:delivery, total, items:ois.map(o=>({id:o.id,name:o.name,quantity:o.quantity,unit_price:o.unit_price,total:o.total})) });
   } catch (err) { res.status(400).json({ error: err.message }); }
 });
 
@@ -117,7 +121,7 @@ router.patch('/:id/bill-printed', authMiddleware, (req, res) => {
   const order = db.prepare('SELECT * FROM orders WHERE id=? AND outlet_id=?').get(req.params.id, req.user.outlet_id);
   if (!order) return res.status(404).json({ error: 'Order not found' });
   const disc = Math.round(parseFloat(discount_amount) * 100) / 100;
-  const newTotal = Math.round((order.subtotal + order.tax_amount + (order.packing_charges||0) - disc) * 100) / 100;
+  const newTotal = Math.round((order.subtotal + order.tax_amount + (order.packing_charges||0) + (order.delivery_charges||0) - disc) * 100) / 100;
   db.prepare('UPDATE orders SET bill_printed=1, discount_amount=?, discount_type=?, total=? WHERE id=?')
     .run(disc, discount_type, newTotal, req.params.id);
   res.json({ success: true, total: newTotal, discount_amount: disc });
@@ -161,7 +165,7 @@ router.post('/:id/quick-pay', authMiddleware, (req, res) => {
   let finalTotal = order.total;
   if (discount_amount != null) {
     const disc = Math.round(parseFloat(discount_amount) * 100) / 100;
-    finalTotal = Math.round((order.subtotal + order.tax_amount + (order.packing_charges||0) - disc) * 100) / 100;
+    finalTotal = Math.round((order.subtotal + order.tax_amount + (order.packing_charges||0) + (order.delivery_charges||0) - disc) * 100) / 100;
     db.prepare('UPDATE orders SET discount_amount=?, discount_type=?, total=? WHERE id=?')
       .run(disc, discount_type || 'flat', finalTotal, order.id);
   }

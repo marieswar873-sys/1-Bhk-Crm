@@ -62,8 +62,11 @@ export default function Billing() {
   const [variantPopup, setVariantPopup] = useState(null);
   const [discountType, setDiscountType] = useState('flat'); // flat | percent
   const [discountValue, setDiscountValue] = useState('');
+  const [deliveryCharge, setDeliveryCharge] = useState('');
   const [editingPrices, setEditingPrices] = useState({}); // cartKey → raw string while typing
   const [kotLoading, setKotLoading] = useState(false);
+  const [reprintingId, setReprintingId] = useState(null);
+  const [dayReportLoading, setDayReportLoading] = useState(false);
 
   const loadMenu = () => {
     Promise.all([api.get('/menu/items'), api.get('/menu/categories'), api.get('/tables'), api.get('/settings')])
@@ -172,6 +175,7 @@ export default function Billing() {
     setCustomerName(data.customer_name || '');
     setCustomerPhone(data.customer_phone || '');
     setOrderType(data.order_type);
+    setDeliveryCharge(data.delivery_charges ? String(data.delivery_charges) : '');
     setTableId(data.table_id || '');
     setNewItems([]);
     // If bill already printed, go straight to payment mode
@@ -180,7 +184,7 @@ export default function Billing() {
 
   // Totals
   const packingEnabled = settings.packing_enabled !== 'false';
-  const isTakeawayOrder = (mode === 'new_order' ? orderType === 'takeaway' : currentOrder?.order_type === 'takeaway');
+  const isTakeawayOrder = (mode === 'new_order' ? (orderType === 'takeaway' || orderType === 'delivery') : (currentOrder?.order_type === 'takeaway' || currentOrder?.order_type === 'delivery'));
   const existingSubtotal = existingItems.reduce((s, i) => s + i.unit_price * i.quantity, 0);
   const existingTax = gstEnabled ? existingItems.reduce((s, i) => s + i.tax_amount, 0) : 0;
   const existingPacking = existingItems.reduce((s, i) => s + (i.packing_charge || 0), 0);
@@ -190,8 +194,12 @@ export default function Billing() {
   const grandSubtotal = Math.round((existingSubtotal + newSubtotal) * 100) / 100;
   const grandTax = Math.round((existingTax + newTax) * 100) / 100;
   const grandPacking = Math.round((existingPacking + newPacking) * 100) / 100;
+  const grandDelivery = (() => {
+    if (mode === 'new_order') return orderType === 'delivery' ? (parseFloat(deliveryCharge) || 0) : 0;
+    return Math.round((parseFloat(currentOrder?.delivery_charges || 0)) * 100) / 100;
+  })();
   const discountAmt = Math.round((discountType === 'percent' ? (grandSubtotal * Math.min(parseFloat(discountValue) || 0, 100) / 100) : Math.min(parseFloat(discountValue) || 0, grandSubtotal)) * 100) / 100;
-  const grandTotal = Math.round((grandSubtotal + grandTax + grandPacking - discountAmt) * 100) / 100;
+  const grandTotal = Math.round((grandSubtotal + grandTax + grandPacking + grandDelivery - discountAmt) * 100) / 100;
 
   // === KOT PRINT ===
   const printKot = (kotNumber, orderNumber, type, tableNum, items) => {
@@ -205,7 +213,7 @@ export default function Billing() {
       <div class="center bold big">--- KOT #${kotNumber} ---</div>
       <div class="line"></div>
       <div>Order: ${orderNumber}</div>
-      <div>Type: ${type === 'dine_in' ? 'Dine-in' : 'Takeaway'}${tableNum ? ' ('+tableNum+')' : ''}</div>
+      <div>Type: ${type === 'dine_in' ? 'Dine-in' : type === 'delivery' ? 'Delivery' : 'Takeaway'}${tableNum ? ' ('+tableNum+')' : ''}</div>
       <div>Time: ${new Date().toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' })}</div>
       <div class="line"></div>
       <table>${rows}</table>
@@ -256,7 +264,7 @@ export default function Billing() {
       <!-- Order Details -->
       <div class="row detail"><span>Order #</span><span>${order.order_number}</span></div>
       <div class="row detail"><span>Date</span><span>${formatDate(order.created_at)}</span></div>
-      <div class="row detail"><span>Type</span><span>${order.order_type === 'dine_in' ? 'Dine-in' : 'Takeaway'}</span></div>
+      <div class="row detail"><span>Type</span><span>${order.order_type === 'dine_in' ? 'Dine-in' : order.order_type === 'delivery' ? 'Delivery' : 'Takeaway'}</span></div>
       ${order.customer_name ? `<div class="row detail"><span>Customer</span><span>${order.customer_name}</span></div>` : ''}
       ${order.customer_phone ? `<div class="row detail"><span>Phone</span><span>${order.customer_phone}</span></div>` : ''}
       <div class="dbl-line"></div>
@@ -274,6 +282,7 @@ export default function Billing() {
       <div class="row detail"><span>Subtotal (${totalItems} items)</span><span>₹${order.subtotal.toFixed(2)}</span></div>
       ${gstSection}
       ${order.packing_charges > 0 ? `<div class="row detail"><span>Packing Charges</span><span>₹${order.packing_charges.toFixed(2)}</span></div>` : ''}
+      ${(order.delivery_charges > 0) ? `<div class="row detail"><span>Delivery Charges</span><span>₹${parseFloat(order.delivery_charges).toFixed(2)}</span></div>` : ''}
       ${order.discount_amount > 0 ? `<div class="row detail" style="color:#e53935"><span>Discount${order.discount_type === 'percent' ? ` (${order.discount_value}%)` : ''}</span><span>-₹${order.discount_amount.toFixed(2)}</span></div>` : ''}
       <div class="dbl-line"></div>
       <div class="row bold xl"><span>TOTAL</span><span>₹${order.total.toFixed(2)}</span></div>
@@ -300,6 +309,7 @@ export default function Billing() {
       const { data } = await api.post('/orders', {
         order_type: orderType, table_id: orderType === 'dine_in' ? tableId : null,
         customer_name: customerName || null, customer_phone: customerPhone || null,
+        delivery_charges: orderType === 'delivery' ? (parseFloat(deliveryCharge) || 0) : 0,
         items: newItems.map(c => ({ menu_item_id: c.menu_item_id, variant_id: c.variant_id, quantity: c.quantity, price_delta: c.price - c.base_price, packing_charge_override: c.packing_charge })),
       });
       toast.success(`Order ${data.order_number} — KOT #${data.kot_number}`);
@@ -383,6 +393,64 @@ export default function Billing() {
     } catch (err) { toast.error(err.response?.data?.error || 'Failed'); }
   };
 
+  const printDayReport = async () => {
+    setDayReportLoading(true);
+    try {
+      const { data: orders } = await api.get('/orders');
+      const paid = orders.filter(o => o.payment_status === 'paid');
+      const total = paid.reduce((s, o) => s + o.total, 0);
+      const tax = paid.reduce((s, o) => s + (o.tax_amount || 0), 0);
+      const packing = paid.reduce((s, o) => s + (o.packing_charges || 0), 0);
+      const delivery = paid.reduce((s, o) => s + (o.delivery_charges || 0), 0);
+      const discount = paid.reduce((s, o) => s + (o.discount_amount || 0), 0);
+      const byType = { dine_in: { count: 0, rev: 0 }, takeaway: { count: 0, rev: 0 }, delivery: { count: 0, rev: 0 } };
+      const byMethod = {};
+      for (const o of paid) {
+        const t = byType[o.order_type] || (byType[o.order_type] = { count: 0, rev: 0 });
+        t.count++; t.rev += o.total;
+        const m = o.payment_method || 'unknown';
+        byMethod[m] = (byMethod[m] || 0) + o.total;
+      }
+      const today = new Date().toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' });
+      const payRows = Object.entries(byMethod).map(([m, v]) => `<div class="row"><span style="text-transform:capitalize">${m}</span><span>₹${v.toFixed(2)}</span></div>`).join('');
+      const typeRows = [['dine_in','🍽️ Dine-in'],['takeaway','🛍️ Takeaway'],['delivery','🛵 Delivery']].map(([k,l]) => byType[k]?.count > 0 ? `<div class="row"><span>${l}</span><span>${byType[k].count} orders · ₹${byType[k].rev.toFixed(2)}</span></div>` : '').join('');
+      printContent(`
+        <div class="center bold big">DAY END REPORT</div>
+        <div class="center sub">${settings.outlet_name || 'Restaurant'}</div>
+        <div class="center sub">${today}</div>
+        <div class="dbl-line"></div>
+        <div class="row bold"><span>Total Orders</span><span>${paid.length}</span></div>
+        <div class="row bold"><span>Total Revenue</span><span>₹${total.toFixed(2)}</span></div>
+        <div class="line"></div>
+        <div class="bold sub" style="margin-bottom:4px">PAYMENT BREAKUP</div>
+        ${payRows}
+        <div class="line"></div>
+        <div class="bold sub" style="margin-bottom:4px">ORDER TYPES</div>
+        ${typeRows}
+        <div class="line"></div>
+        <div class="bold sub" style="margin-bottom:4px">CHARGES & TAX</div>
+        ${gstEnabled ? `<div class="row"><span>GST</span><span>₹${tax.toFixed(2)}</span></div>` : ''}
+        ${packing > 0 ? `<div class="row"><span>Packing</span><span>₹${packing.toFixed(2)}</span></div>` : ''}
+        ${delivery > 0 ? `<div class="row"><span>Delivery</span><span>₹${delivery.toFixed(2)}</span></div>` : ''}
+        ${discount > 0 ? `<div class="row" style="color:#e53935"><span>Discounts Given</span><span>-₹${discount.toFixed(2)}</span></div>` : ''}
+        <div class="dbl-line"></div>
+        <div class="center sub">--- End of Day ---</div>
+      `, { printer: settings.bill_printer, width: settings.paper_width });
+    } catch (err) { toast.error('Failed to generate report'); }
+    finally { setDayReportLoading(false); }
+  };
+
+  const reprintBill = async (orderId) => {
+    setReprintingId(orderId);
+    try {
+      const { data: order } = await api.get(`/orders/${orderId}`);
+      if (order?.id) {
+        printBill(order, order.items || []);
+      }
+    } catch (err) { toast.error('Reprint failed'); }
+    finally { setReprintingId(null); }
+  };
+
   const resetToNew = () => {
     setMode('new_order');
     setCurrentOrder(null);
@@ -392,6 +460,7 @@ export default function Billing() {
     setCustomerPhone('');
     setTableId('');
     setOrderType('takeaway');
+    setDeliveryCharge('');
     setDiscountValue('');
     setDiscountType('flat');
     setEditingPrices({});
@@ -447,7 +516,7 @@ export default function Billing() {
             }}>
               <div style={{ fontSize: 13, fontWeight: 600, color: '#1a1a2e' }}>{o.order_number}</div>
               <div style={{ fontSize: 11, color: '#888' }}>
-                {o.order_type === 'dine_in' ? '🍽️' : '🛍️'} {o.customer_name || 'Walk-in'} · ₹{o.total}
+                {o.order_type === 'dine_in' ? '🍽️' : o.order_type === 'delivery' ? '🛵' : '🛍️'} {o.customer_name || 'Walk-in'} · ₹{o.total}
               </div>
               <div style={{ fontSize: 10, color: '#aaa' }}>
                 {formatTime(o.created_at)} · {o.item_count} items
@@ -457,6 +526,10 @@ export default function Billing() {
           ))}
           {activeOrders.length === 0 && <p style={{ textAlign: 'center', color: '#ccc', fontSize: 12, padding: 20 }}>No active orders</p>}
         </div>
+        <button onClick={printDayReport} disabled={dayReportLoading} style={{
+          margin: '8px 10px 10px', padding: '8px', background: dayReportLoading ? '#ccc' : '#1a1a2e', color: '#fff',
+          border: 'none', borderRadius: 8, cursor: dayReportLoading ? 'default' : 'pointer', fontSize: 11, fontWeight: 600
+        }}>{dayReportLoading ? '⏳ Loading...' : '🖨️ Day End Report'}</button>
       </div>
 
       {/* === Mobile: Orders Tab === */}
@@ -471,7 +544,7 @@ export default function Billing() {
             background: currentOrder?.id === o.id ? '#e3f2fd' : '#f8f9fa'
           }}>
             <div style={{ fontSize: 13, fontWeight: 600, color: '#1a1a2e' }}>{o.order_number}</div>
-            <div style={{ fontSize: 11, color: '#888' }}>{o.order_type === 'dine_in' ? '🍽️' : '🛍️'} {o.customer_name || 'Walk-in'} · ₹{o.total}</div>
+            <div style={{ fontSize: 11, color: '#888' }}>{o.order_type === 'dine_in' ? '🍽️' : o.order_type === 'delivery' ? '🛵' : '🛍️'} {o.customer_name || 'Walk-in'} · ₹{o.total}</div>
           </div>
         ))}
         {activeOrders.length === 0 && <p style={{ textAlign: 'center', color: '#ccc', fontSize: 12, padding: 20 }}>No active orders</p>}
@@ -481,9 +554,9 @@ export default function Billing() {
       <div className="desktop-menu" style={{ flex: 1, display: 'flex', flexDirection: 'column', padding: '12px 16px', minWidth: 0 }}>
         <div style={{ display: 'flex', gap: 8, marginBottom: 10, flexWrap: 'wrap', alignItems: 'center' }}>
           {mode === 'new_order' && <>
-            {['takeaway', 'dine_in'].map(t => (
-              <button key={t} onClick={() => setOrderType(t)} style={btnStyle(orderType === t)}>
-                {t === 'dine_in' ? '🍽️ Dine-in' : '🛍️ Takeaway'}
+            {[['takeaway','🛍️ Takeaway'],['dine_in','🍽️ Dine-in'],['delivery','🛵 Delivery']].map(([t,label]) => (
+              <button key={t} onClick={() => { setOrderType(t); if (t !== 'delivery') setDeliveryCharge(''); }} style={btnStyle(orderType === t)}>
+                {label}
               </button>
             ))}
             {orderType === 'dine_in' && (
@@ -647,6 +720,17 @@ export default function Billing() {
             {grandPacking > 0 && (
               <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12, color: '#ff9800', marginBottom: 3 }}>
                 <span>Packing</span><span>₹{grandPacking.toFixed(2)}</span>
+              </div>
+            )}
+            {(mode === 'new_order' ? orderType === 'delivery' : currentOrder?.order_type === 'delivery') && (
+              <div style={{ display: 'flex', alignItems: 'center', gap: 4, marginBottom: 3 }}>
+                <span style={{ fontSize: 12, color: '#2196f3', minWidth: 100 }}>🛵 Delivery</span>
+                {mode === 'new_order' ? (
+                  <input type="number" min="0" value={deliveryCharge} onChange={e => setDeliveryCharge(e.target.value)}
+                    style={{ width: 70, fontSize: 12, padding: '2px 6px', border: '1px solid #2196f3', borderRadius: 4, textAlign: 'right' }} placeholder="0" />
+                ) : (
+                  <span style={{ fontSize: 12, color: '#2196f3' }}>₹{grandDelivery.toFixed(2)}</span>
+                )}
               </div>
             )}
             {/* Discount Row */}
