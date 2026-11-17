@@ -43,7 +43,7 @@ function recalcTotals(db, orderId) {
 }
 
 router.post('/', authMiddleware, (req, res) => {
-  const { order_type, table_id, customer_name, customer_phone, items, notes, delivery_charges } = req.body;
+  const { order_type, table_id, customer_name, customer_phone, items, notes, delivery_charges, delivery_address } = req.body;
   if (!order_type || !items?.length) return res.status(400).json({ error: 'Order type and items required' });
   const db = getDb();
   try {
@@ -58,7 +58,7 @@ router.post('/', authMiddleware, (req, res) => {
     const total=Math.round((sub+tax+pack+delivery)*100)/100;
 
     const result = db.transaction(() => {
-      db.prepare('INSERT INTO orders (id,outlet_id,order_number,order_type,table_id,customer_name,customer_phone,subtotal,tax_amount,packing_charges,delivery_charges,total,notes,created_by) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)').run(orderId, req.user.outlet_id, orderNumber, order_type, table_id||null, customer_name||null, customer_phone||null, sub, tax, pack, delivery, total, notes||null, req.user.id);
+      db.prepare('INSERT INTO orders (id,outlet_id,order_number,order_type,table_id,customer_name,customer_phone,subtotal,tax_amount,packing_charges,delivery_charges,delivery_address,total,notes,created_by) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)').run(orderId, req.user.outlet_id, orderNumber, order_type, table_id||null, customer_name||null, customer_phone||null, sub, tax, pack, delivery, delivery_address||null, total, notes||null, req.user.id);
       const kotId = uuid(), kotNum = generateKotNumber(db, req.user.outlet_id);
       db.prepare('INSERT INTO kot_tokens (id,order_id,token_number) VALUES (?,?,?)').run(kotId, orderId, kotNum);
       const ins = db.prepare('INSERT INTO order_items (id,order_id,menu_item_id,variant_id,quantity,unit_price,tax_percent,tax_amount,total,notes,kot_id,packing_charge) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)');
@@ -66,7 +66,7 @@ router.post('/', authMiddleware, (req, res) => {
       if (table_id && order_type==='dine_in') db.prepare("UPDATE tables_config SET status='occupied' WHERE id=?").run(table_id);
       return { kotId, kotNum };
     })();
-    res.status(201).json({ id:orderId, order_number:orderNumber, kot_number:result.kotNum, kot_id:result.kotId, order_type, subtotal:sub, tax_amount:tax, packing_charges:pack, delivery_charges:delivery, total, items:ois.map(o=>({id:o.id,name:o.name,quantity:o.quantity,unit_price:o.unit_price,total:o.total})) });
+    res.status(201).json({ id:orderId, order_number:orderNumber, kot_number:result.kotNum, kot_id:result.kotId, order_type, subtotal:sub, tax_amount:tax, packing_charges:pack, delivery_charges:delivery, delivery_address:delivery_address||null, total, items:ois.map(o=>({id:o.id,name:o.name,quantity:o.quantity,unit_price:o.unit_price,total:o.total})) });
   } catch (err) { res.status(400).json({ error: err.message }); }
 });
 

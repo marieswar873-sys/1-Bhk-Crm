@@ -177,6 +177,7 @@ export default function Orders() {
               {typeLabels[detail.order_type]} · {new Date(detail.created_at).toLocaleString('en-IN', { day:'2-digit', month:'short', year:'numeric', hour:'2-digit', minute:'2-digit' })}
             </div>
             {detail.customer_name && <div style={{ fontSize: 12, color: '#ccc', marginTop: 2 }}>👤 {detail.customer_name}{detail.customer_phone ? ` · ${detail.customer_phone}` : ''}</div>}
+            {detail.delivery_address && <div style={{ fontSize: 11, color: '#90caf9', marginTop: 2 }}>📍 {detail.delivery_address}</div>}
           </div>
 
           <div style={{ padding: '16px 20px', flex: 1 }}>

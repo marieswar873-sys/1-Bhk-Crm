@@ -60,6 +60,7 @@ function initDb() {
       status TEXT DEFAULT 'active' CHECK(status IN ('active','preparing','ready','served','completed','cancelled')),
       subtotal REAL DEFAULT 0, tax_amount REAL DEFAULT 0, discount_amount REAL DEFAULT 0,
       packing_charges REAL DEFAULT 0, delivery_charges REAL DEFAULT 0, total REAL DEFAULT 0,
+      delivery_address TEXT,
       payment_method TEXT CHECK(payment_method IN ('cash','upi','card','split','platform')),
       payment_status TEXT DEFAULT 'pending' CHECK(payment_status IN ('pending','paid','refunded')),
       platform_order_id TEXT, platform_commission REAL DEFAULT 0,
@@ -145,6 +146,7 @@ function initDb() {
 
   // Migrations for existing databases
   try { db.exec(`ALTER TABLE orders ADD COLUMN delivery_charges REAL DEFAULT 0`); } catch {}
+  try { db.exec(`ALTER TABLE orders ADD COLUMN delivery_address TEXT`); } catch {}
 
   // Seed default admin if none exists
   const adminExists = db.prepare('SELECT id FROM users WHERE role = ?').get('admin');

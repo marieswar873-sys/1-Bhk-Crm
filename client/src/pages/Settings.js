@@ -226,12 +226,17 @@ export default function Settings() {
         </div>
       </div>
 
-      {/* Packing Charges */}
+      {/* Packing & Delivery Charges */}
       <div style={{ background: '#fff', borderRadius: 12, padding: 24, marginBottom: 16, boxShadow: '0 2px 8px rgba(0,0,0,0.06)' }}>
-        <h3 style={{ margin: '0 0 16px', fontSize: 16, color: '#1a1a2e' }}>Packing Charges</h3>
-        {toggleBtn('packing_enabled', 'Packing Charges Enabled', 'Add per-item packing charges for takeaway orders. Each menu item has its own charge (set in Menu).')}
+        <h3 style={{ margin: '0 0 16px', fontSize: 16, color: '#1a1a2e' }}>Packing & Delivery Charges</h3>
+        {toggleBtn('packing_enabled', 'Packing Charges Enabled', 'Add per-item packing charges for Takeaway & Delivery orders.')}
+        <div style={{ marginTop: 8, marginBottom: 16 }}>
+          <label style={labelStyle}>Default Delivery Charge (₹) — auto-fills when you pick Delivery type</label>
+          <input type="number" min="0" value={settings.delivery_charge_default || '0'} onChange={e => update('delivery_charge_default', e.target.value)} style={{ ...fieldStyle, maxWidth: 160 }} placeholder="0" />
+          <div style={{ fontSize: 11, color: '#888', marginTop: 4 }}>You can still edit this per order at billing time.</div>
+        </div>
         <div style={{ fontSize: 12, color: '#888', padding: '0 4px' }}>
-          Packing charges only apply to <b>Takeaway</b> orders, not Dine-in. Set individual item packing charges in Menu → Edit item.
+          Packing charges apply to <b>Takeaway & Delivery</b> orders (per item, set in Menu). Delivery charge is order-level.
         </div>
       </div>
 

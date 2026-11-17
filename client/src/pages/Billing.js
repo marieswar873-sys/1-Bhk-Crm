@@ -63,6 +63,8 @@ export default function Billing() {
   const [discountType, setDiscountType] = useState('flat'); // flat | percent
   const [discountValue, setDiscountValue] = useState('');
   const [deliveryCharge, setDeliveryCharge] = useState('');
+  const [deliveryAddress, setDeliveryAddress] = useState('');
+  const [emailingReport, setEmailingReport] = useState(false);
   const [editingPrices, setEditingPrices] = useState({}); // cartKey → raw string while typing
   const [kotLoading, setKotLoading] = useState(false);
   const [reprintingId, setReprintingId] = useState(null);
@@ -176,6 +178,7 @@ export default function Billing() {
     setCustomerPhone(data.customer_phone || '');
     setOrderType(data.order_type);
     setDeliveryCharge(data.delivery_charges ? String(data.delivery_charges) : '');
+    setDeliveryAddress(data.delivery_address || '');
     setTableId(data.table_id || '');
     setNewItems([]);
     // If bill already printed, go straight to payment mode
@@ -214,6 +217,7 @@ export default function Billing() {
       <div class="line"></div>
       <div>Order: ${orderNumber}</div>
       <div>Type: ${type === 'dine_in' ? 'Dine-in' : type === 'delivery' ? 'Delivery' : 'Takeaway'}${tableNum ? ' ('+tableNum+')' : ''}</div>
+      ${(type === 'delivery' && currentOrder?.delivery_address) ? `<div style="font-size:10px">📍 ${currentOrder.delivery_address}</div>` : ''}
       <div>Time: ${new Date().toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' })}</div>
       <div class="line"></div>
       <table>${rows}</table>
@@ -266,6 +270,7 @@ export default function Billing() {
       <div class="row detail"><span>Date</span><span>${formatDate(order.created_at)}</span></div>
       <div class="row detail"><span>Type</span><span>${order.order_type === 'dine_in' ? 'Dine-in' : order.order_type === 'delivery' ? 'Delivery' : 'Takeaway'}</span></div>
       ${order.customer_name ? `<div class="row detail"><span>Customer</span><span>${order.customer_name}</span></div>` : ''}
+      ${order.delivery_address ? `<div class="row detail"><span>Address</span><span style="max-width:160px;text-align:right;font-size:10px">${order.delivery_address}</span></div>` : ''}
       ${order.customer_phone ? `<div class="row detail"><span>Phone</span><span>${order.customer_phone}</span></div>` : ''}
       <div class="dbl-line"></div>
 
@@ -310,6 +315,7 @@ export default function Billing() {
         order_type: orderType, table_id: orderType === 'dine_in' ? tableId : null,
         customer_name: customerName || null, customer_phone: customerPhone || null,
         delivery_charges: orderType === 'delivery' ? (parseFloat(deliveryCharge) || 0) : 0,
+        delivery_address: orderType === 'delivery' ? (deliveryAddress || null) : null,
         items: newItems.map(c => ({ menu_item_id: c.menu_item_id, variant_id: c.variant_id, quantity: c.quantity, price_delta: c.price - c.base_price, packing_charge_override: c.packing_charge })),
       });
       toast.success(`Order ${data.order_number} — KOT #${data.kot_number}`);
@@ -440,6 +446,15 @@ export default function Billing() {
     finally { setDayReportLoading(false); }
   };
 
+  const emailDayReport = async () => {
+    setEmailingReport(true);
+    try {
+      await api.post('/reports/send-daily');
+      toast.success('Day report emailed!');
+    } catch (err) { toast.error(err.response?.data?.error || 'Email failed — check SMTP settings'); }
+    finally { setEmailingReport(false); }
+  };
+
   const reprintBill = async (orderId) => {
     setReprintingId(orderId);
     try {
@@ -461,6 +476,7 @@ export default function Billing() {
     setTableId('');
     setOrderType('takeaway');
     setDeliveryCharge('');
+    setDeliveryAddress('');
     setDiscountValue('');
     setDiscountType('flat');
     setEditingPrices({});
@@ -526,10 +542,16 @@ export default function Billing() {
           ))}
           {activeOrders.length === 0 && <p style={{ textAlign: 'center', color: '#ccc', fontSize: 12, padding: 20 }}>No active orders</p>}
         </div>
-        <button onClick={printDayReport} disabled={dayReportLoading} style={{
-          margin: '8px 10px 10px', padding: '8px', background: dayReportLoading ? '#ccc' : '#1a1a2e', color: '#fff',
-          border: 'none', borderRadius: 8, cursor: dayReportLoading ? 'default' : 'pointer', fontSize: 11, fontWeight: 600
-        }}>{dayReportLoading ? '⏳ Loading...' : '🖨️ Day End Report'}</button>
+        <div style={{ margin: '8px 10px 10px', display: 'flex', gap: 4 }}>
+          <button onClick={printDayReport} disabled={dayReportLoading} style={{
+            flex: 1, padding: '8px 4px', background: dayReportLoading ? '#ccc' : '#1a1a2e', color: '#fff',
+            border: 'none', borderRadius: 8, cursor: dayReportLoading ? 'default' : 'pointer', fontSize: 10, fontWeight: 600
+          }}>{dayReportLoading ? '⏳...' : '🖨️ Day Report'}</button>
+          <button onClick={emailDayReport} disabled={emailingReport} title="Email today's report" style={{
+            padding: '8px 10px', background: emailingReport ? '#ccc' : '#2196f3', color: '#fff',
+            border: 'none', borderRadius: 8, cursor: emailingReport ? 'default' : 'pointer', fontSize: 13
+          }}>{emailingReport ? '⏳' : '📧'}</button>
+        </div>
       </div>
 
       {/* === Mobile: Orders Tab === */}
@@ -555,7 +577,7 @@ export default function Billing() {
         <div style={{ display: 'flex', gap: 8, marginBottom: 10, flexWrap: 'wrap', alignItems: 'center' }}>
           {mode === 'new_order' && <>
             {[['takeaway','🛍️ Takeaway'],['dine_in','🍽️ Dine-in'],['delivery','🛵 Delivery']].map(([t,label]) => (
-              <button key={t} onClick={() => { setOrderType(t); if (t !== 'delivery') setDeliveryCharge(''); }} style={btnStyle(orderType === t)}>
+              <button key={t} onClick={() => { setOrderType(t); if (t === 'delivery') { setDeliveryCharge(settings.delivery_charge_default || ''); } else { setDeliveryCharge(''); setDeliveryAddress(''); } }} style={btnStyle(orderType === t)}>
                 {label}
               </button>
             ))}
@@ -633,12 +655,18 @@ export default function Billing() {
           </h3>
 
           {mode === 'new_order' && (
-            <div style={{ display: 'flex', gap: 6, marginBottom: 10 }}>
-              <input placeholder="Customer name" value={customerName} onChange={e => setCustomerName(e.target.value)}
-                style={{ flex: 1, padding: '6px 8px', border: '1px solid #ddd', borderRadius: 6, fontSize: 12 }} />
-              <input placeholder="Phone" value={customerPhone} onChange={e => setCustomerPhone(e.target.value)}
-                style={{ width: 100, padding: '6px 8px', border: '1px solid #ddd', borderRadius: 6, fontSize: 12 }} />
-            </div>
+            <>
+              <div style={{ display: 'flex', gap: 6, marginBottom: orderType === 'delivery' ? 6 : 10 }}>
+                <input placeholder="Customer name" value={customerName} onChange={e => setCustomerName(e.target.value)}
+                  style={{ flex: 1, padding: '6px 8px', border: '1px solid #ddd', borderRadius: 6, fontSize: 12 }} />
+                <input placeholder="Phone" value={customerPhone} onChange={e => setCustomerPhone(e.target.value)}
+                  style={{ width: 100, padding: '6px 8px', border: '1px solid #ddd', borderRadius: 6, fontSize: 12 }} />
+              </div>
+              {orderType === 'delivery' && (
+                <textarea placeholder="🛵 Delivery address..." value={deliveryAddress} onChange={e => setDeliveryAddress(e.target.value)}
+                  rows={2} style={{ width: '100%', padding: '6px 8px', border: '1px solid #2196f3', borderRadius: 6, fontSize: 12, resize: 'none', marginBottom: 10, boxSizing: 'border-box' }} />
+              )}
+            </>
           )}
 
           <div style={{ flex: 1, overflow: 'auto' }}>
