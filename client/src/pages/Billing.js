@@ -56,6 +56,8 @@ export default function Billing() {
 
   const [mode, setMode] = useState('new_order'); // new_order | active_order | payment
   const [activeOrders, setActiveOrders] = useState([]);
+  const [completedOrders, setCompletedOrders] = useState([]);
+  const [showCompleted, setShowCompleted] = useState(false);
   const [currentOrder, setCurrentOrder] = useState(null);
   const [existingItems, setExistingItems] = useState([]);
   const [newItems, setNewItems] = useState([]);
@@ -82,6 +84,7 @@ export default function Billing() {
 
   const loadActiveOrders = useCallback(() => {
     api.get('/orders/active').then(r => setActiveOrders(r.data)).catch(() => {});
+    api.get('/orders?status=completed').then(r => setCompletedOrders(r.data || [])).catch(() => {});
   }, []);
 
   const [logoRaster, setLogoRaster] = useState(null);
@@ -554,6 +557,33 @@ export default function Billing() {
             </div>
           ))}
           {activeOrders.length === 0 && <p style={{ textAlign: 'center', color: '#ccc', fontSize: 12, padding: 20 }}>No active orders</p>}
+        </div>
+        {/* Completed orders toggle */}
+        <div style={{ borderTop: '1px solid #f0f0f0', padding: '6px 10px 0' }}>
+          <button onClick={() => setShowCompleted(v => !v)} style={{
+            width: '100%', display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+            background: 'none', border: 'none', cursor: 'pointer', padding: '4px 0', fontSize: 11, color: '#888', fontWeight: 600
+          }}>
+            <span>✅ COMPLETED ({completedOrders.length})</span>
+            <span>{showCompleted ? '▲' : '▼'}</span>
+          </button>
+          {showCompleted && (
+            <div style={{ maxHeight: 180, overflowY: 'auto', marginTop: 4 }}>
+              {completedOrders.length === 0 && <p style={{ textAlign: 'center', color: '#ccc', fontSize: 11, padding: 8 }}>No completed orders</p>}
+              {completedOrders.map(o => (
+                <div key={o.id} style={{ padding: '6px 4px', borderBottom: '1px solid #f5f5f5', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <div>
+                    <div style={{ fontSize: 11, fontWeight: 600, color: '#1a1a2e' }}>{o.order_number}</div>
+                    <div style={{ fontSize: 10, color: '#aaa' }}>{formatTime(o.created_at)} · ₹{o.total}</div>
+                  </div>
+                  <button onClick={() => reprintBill(o.id)} disabled={reprintingId === o.id} style={{
+                    padding: '3px 7px', background: reprintingId === o.id ? '#ccc' : '#f5f5f5', border: '1px solid #ddd',
+                    borderRadius: 5, cursor: reprintingId === o.id ? 'default' : 'pointer', fontSize: 10, color: '#555', fontWeight: 600
+                  }}>{reprintingId === o.id ? '...' : '🖨️'}</button>
+                </div>
+              ))}
+            </div>
+          )}
         </div>
         <div style={{ margin: '8px 10px 10px', display: 'flex', gap: 4 }}>
           <button onClick={printDayReport} disabled={dayReportLoading} style={{
