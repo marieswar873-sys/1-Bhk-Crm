@@ -399,6 +399,19 @@ export default function Billing() {
     } catch (err) { toast.error(err.response?.data?.error || 'Failed'); }
   };
 
+  // Pay without printing bill
+  const payWithoutPrint = async (method) => {
+    if (!currentOrder) return;
+    if (newItems.length > 0) return toast.error('Send pending items to kitchen first');
+    try {
+      await api.post(`/orders/${currentOrder.id}/quick-pay`, { method, discount_amount: discountAmt, discount_type: discountType, discount_value: discountValue });
+      toast.success(`Order closed (no print) — paid via ${method}!`);
+      resetToNew();
+      loadActiveOrders();
+      loadMenu();
+    } catch (err) { toast.error(err.response?.data?.error || 'Failed'); }
+  };
+
   const printDayReport = async () => {
     setDayReportLoading(true);
     try {
@@ -640,7 +653,12 @@ export default function Billing() {
                 }}>{label}</button>
               ))}
             </div>
-            <button onClick={() => setMode('active_order')} style={{ marginTop: 10, background: 'none', border: 'none', color: '#888', cursor: 'pointer', fontSize: 13 }}>
+            <div style={{ display: 'flex', gap: 10, marginTop: 8 }}>
+              {[['cash','No Print·Cash'],['upi','No Print·UPI'],['card','No Print·Card']].map(([m,label])=>(
+                <button key={m} onClick={()=>quickPay(m)} style={{ padding:'8px 14px', background:'#555', color:'#fff', border:'none', borderRadius:8, cursor:'pointer', fontSize:11, fontWeight:700 }}>✓ {label}</button>
+              ))}
+            </div>
+            <button onClick={() => setMode('active_order')} style={{ marginTop: 4, background: 'none', border: 'none', color: '#888', cursor: 'pointer', fontSize: 13 }}>
               ← Back to order
             </button>
           </div>
@@ -819,6 +837,15 @@ export default function Billing() {
                         <button key={m} onClick={() => billAndPay(m)} disabled={newItems.length > 0} style={{
                           flex: 1, padding: '8px 4px', background: newItems.length > 0 ? '#ccc' : color, color: '#fff',
                           border: 'none', borderRadius: 6, fontSize: 10, fontWeight: 700, cursor: newItems.length > 0 ? 'default' : 'pointer'
+                        }}>{label}</button>
+                      ))}
+                    </div>
+                    {/* Close without print */}
+                    <div style={{ display: 'flex', gap: 4 }}>
+                      {[['cash', '✓ No Print·Cash', '#555'], ['upi', '✓ No Print·UPI', '#555'], ['card', '✓ No Print·Card', '#555']].map(([m, label, color]) => (
+                        <button key={m} onClick={() => payWithoutPrint(m)} disabled={newItems.length > 0} style={{
+                          flex: 1, padding: '7px 4px', background: newItems.length > 0 ? '#eee' : color, color: '#fff',
+                          border: 'none', borderRadius: 6, fontSize: 9, fontWeight: 700, cursor: newItems.length > 0 ? 'default' : 'pointer'
                         }}>{label}</button>
                       ))}
                     </div>
