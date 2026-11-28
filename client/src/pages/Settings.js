@@ -392,6 +392,13 @@ export default function Settings() {
           <div style={{ fontSize: 11, color: '#888', marginTop: 4 }}>Leave default unless you self-host the SaaS API.</div>
         </div>
 
+        <div style={{ marginBottom: 16 }}>
+          <label style={labelStyle}>Restaurant Slug</label>
+          <input value={settings.restaurant_slug || ''} onChange={e => update('restaurant_slug', e.target.value)}
+            placeholder="e.g. sadhana-foods" style={{ ...fieldStyle, fontFamily: 'monospace' }} />
+          <div style={{ fontSize: 11, color: '#888', marginTop: 4 }}>Your restaurant's URL slug from the SaaS admin panel. Used to generate the delivery QR code.</div>
+        </div>
+
         <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
           <button onClick={syncNow} disabled={syncing} style={{
             padding: '10px 20px', background: '#2196f3', color: '#fff', border: 'none',
@@ -405,6 +412,30 @@ export default function Settings() {
           }}>
             {restoring ? 'Restoring…' : '⬇️ Restore Menu from Cloud'}
           </button>
+          {settings.restaurant_slug && (
+            <button onClick={() => {
+              const baseUrl = 'https://app.1bhkfoods.com';
+              const slug = settings.restaurant_slug;
+              const orderUrl = `${baseUrl}/menu/${slug}?type=delivery`;
+              const qrUrl = `https://api.qrserver.com/v1/create-qr-code/?size=600x600&data=${encodeURIComponent(orderUrl)}&margin=20`;
+              const w = window.open('', '_blank', 'width=680,height=760');
+              if (w) {
+                w.document.write(`<html><head><title>Delivery QR — ${slug}</title></head><body style="font-family:sans-serif;text-align:center;padding:24px;background:#fff">
+                  <h2 style="margin-bottom:4px">🛵 Order for Delivery</h2>
+                  <p style="color:#888;margin-bottom:16px;font-size:13px">Scan to place a delivery order online</p>
+                  <img src="${qrUrl}" style="width:400px;height:400px;border:1px solid #eee;border-radius:8px" />
+                  <p style="margin-top:12px;font-size:12px;color:#555;word-break:break-all">${orderUrl}</p>
+                  <br/><a href="${qrUrl}" download="delivery-qr-${slug}.png" style="background:#1a1a2e;color:#fff;padding:10px 24px;border-radius:8px;text-decoration:none;font-size:14px;font-weight:600">⬇ Download QR Image</a>
+                </body></html>`);
+                w.document.close();
+              }
+            }} style={{
+              padding: '10px 20px', background: '#ff6b35', color: '#fff', border: 'none',
+              borderRadius: 8, cursor: 'pointer', fontSize: 13, fontWeight: 600
+            }}>
+              🛵 Delivery QR Code
+            </button>
+          )}
         </div>
         <div style={{ fontSize: 11, color: '#888', marginTop: 8 }}>Sync (up) runs automatically every 5 minutes. Restore (down) pulls your menu from the cloud — use it on a fresh install.</div>
       </div>

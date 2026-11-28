@@ -6,7 +6,7 @@
   "scripts": {
     "server": "node server/index.js",
     "client": "cd client && npx react-scripts start",
-    "dev": "concurrently \"npm run server\" \"npm run client\"",
+    "dev": "concurrently \"node server/index.js\" \"cd client && set PORT=3000 && npm start\" \"wait-on http://localhost:3000 && set DEV=1 && electron .\"",
     "build": "cd client && npx react-scripts build",
     "electron": "electron .",
     "electron-dev": "npm run build && electron .",
@@ -27,6 +27,7 @@
     "jsonwebtoken": "^9.0.3",
     "node-cron": "^4.5.0",
     "nodemailer": "^9.0.1",
+    "puppeteer": "^25.8.0",
     "uuid": "^14.0.1"
   },
   "devDependencies": {
@@ -35,8 +36,8 @@
     "png-to-ico": "^3.0.1"
   },
   "build": {
-    "appId": "com.1bhk.crm",
-    "productName": "1BHK CRM",
+    "appId": "com.sadhanafoods.crm",
+    "productName": "Sadhana Foods CRM",
     "directories": {
       "output": "dist"
     },
@@ -56,10 +57,10 @@
     },
     "nsis": {
       "oneClick": true,
-      "artifactName": "1BHK-CRM-Setup.${ext}",
+      "artifactName": "SadhanaFoods-CRM-Setup.${ext}",
       "installerIcon": "app-icon.ico",
       "uninstallerIcon": "app-icon.ico",
-      "shortcutName": "1BHK CRM",
+      "shortcutName": "Sadhana Foods CRM",
       "createDesktopShortcut": "always",
       "createStartMenuShortcut": true,
       "runAfterFinish": true
