@@ -11,8 +11,18 @@ export function AuthProvider({ children }) {
     const stored = localStorage.getItem('user');
     if (stored) {
       setUser(JSON.parse(stored));
+      setLoading(false);
+    } else {
+      // Auto-login for local Electron app — no manual login needed
+      api.post('/auth/login', { email: 'admin@restaurant.com', password: 'admin123' })
+        .then(({ data }) => {
+          localStorage.setItem('token', data.token);
+          localStorage.setItem('user', JSON.stringify(data.user));
+          setUser(data.user);
+        })
+        .catch(() => {})
+        .finally(() => setLoading(false));
     }
-    setLoading(false);
   }, []);
 
   const login = async (email, password) => {
