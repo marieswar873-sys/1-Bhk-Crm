@@ -98,13 +98,14 @@ jobs:
           CALLBACK_SECRET: ${{ secrets.BUILD_CALLBACK_SECRET }}
         run: |
           $body = @{
-            tenant_id    = $env:TENANT_ID
-            download_url = $env:DOWNLOAD_URL
-            secret       = $env:CALLBACK_SECRET
+            tenant_id        = $env:TENANT_ID
+            crm_download_url = $env:DOWNLOAD_URL
           } | ConvertTo-Json
+
+          $headers = @{ "x-build-secret" = $env:CALLBACK_SECRET; "Content-Type" = "application/json" }
 
           Invoke-RestMethod -Uri $env:CALLBACK_URL `
             -Method POST `
-            -ContentType "application/json" `
+            -Headers $headers `
             -Body $body
           echo "Notified API: $env:DOWNLOAD_URL"
