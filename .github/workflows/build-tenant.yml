@@ -37,6 +37,7 @@ jobs:
       - name: Build tenant installer
         shell: pwsh
         env:
+          CI: "false"
           TENANT_NAME:    ${{ github.event.client_payload.tenant_name }}
           TENANT_SLUG:    ${{ github.event.client_payload.tenant_slug }}
           TENANT_ICON:    ${{ github.event.client_payload.icon_url }}
