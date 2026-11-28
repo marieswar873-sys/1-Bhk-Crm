@@ -220,7 +220,11 @@ export default function Billing() {
       <div class="line"></div>
       <div>Order: ${orderNumber}</div>
       <div>Type: ${type === 'dine_in' ? 'Dine-in' : type === 'delivery' ? 'Delivery' : 'Takeaway'}${tableNum ? ' ('+tableNum+')' : ''}</div>
-      ${(type === 'delivery' && currentOrder?.delivery_address) ? `<div style="font-size:10px">📍 ${currentOrder.delivery_address}</div>` : ''}
+      ${type === 'delivery' ? `
+        ${(customerName || currentOrder?.customer_name) ? `<div style="font-size:11px">👤 ${customerName || currentOrder.customer_name}</div>` : ''}
+        ${(customerPhone || currentOrder?.customer_phone) ? `<div style="font-size:11px">📞 ${customerPhone || currentOrder.customer_phone}</div>` : ''}
+        ${(deliveryAddress || currentOrder?.delivery_address) ? `<div style="font-size:10px">📍 ${deliveryAddress || currentOrder.delivery_address}</div>` : ''}
+      ` : ''}
       <div>Time: ${new Date().toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' })}</div>
       <div class="line"></div>
       <table>${rows}</table>

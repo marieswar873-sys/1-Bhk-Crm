@@ -148,6 +148,36 @@ function initDb() {
   try { db.exec(`ALTER TABLE orders ADD COLUMN delivery_charges REAL DEFAULT 0`); } catch {}
   try { db.exec(`ALTER TABLE orders ADD COLUMN delivery_address TEXT`); } catch {}
 
+  // Fix CHECK constraint on order_type to include 'delivery' (old DBs only had dine_in/takeaway/zomato/swiggy)
+  try {
+    const col = db.prepare(`SELECT sql FROM sqlite_master WHERE type='table' AND name='orders'`).get();
+    if (col && col.sql && col.sql.includes("'dine_in','takeaway','zomato','swiggy'") && !col.sql.includes("'delivery'")) {
+      db.exec(`
+        CREATE TABLE IF NOT EXISTS orders_new (
+          id TEXT PRIMARY KEY, outlet_id TEXT NOT NULL REFERENCES outlets(id),
+          order_number TEXT NOT NULL, order_type TEXT NOT NULL CHECK(order_type IN ('dine_in','takeaway','delivery','zomato','swiggy')),
+          table_id TEXT REFERENCES tables_config(id), customer_name TEXT, customer_phone TEXT,
+          status TEXT DEFAULT 'active' CHECK(status IN ('active','preparing','ready','served','completed','cancelled')),
+          total REAL NOT NULL DEFAULT 0, tax REAL DEFAULT 0, discount REAL DEFAULT 0,
+          packing_charges REAL DEFAULT 0, delivery_charges REAL DEFAULT 0, delivery_address TEXT,
+          payment_method TEXT CHECK(payment_method IN ('cash','upi','card','split','platform')),
+          payment_status TEXT DEFAULT 'pending' CHECK(payment_status IN ('pending','paid','refunded')),
+          notes TEXT, synced INTEGER DEFAULT 0, created_at TEXT DEFAULT (datetime('now')), updated_at TEXT DEFAULT (datetime('now'))
+        );
+        INSERT INTO orders_new SELECT id, outlet_id, order_number, order_type, table_id, customer_name, customer_phone,
+          status, total, tax, discount, packing_charges,
+          COALESCE(delivery_charges, 0), delivery_address, payment_method, payment_status, notes, synced, created_at, updated_at
+        FROM orders;
+        DROP TABLE orders;
+        ALTER TABLE orders_new RENAME TO orders;
+        CREATE INDEX IF NOT EXISTS idx_orders_outlet ON orders(outlet_id);
+        CREATE INDEX IF NOT EXISTS idx_orders_date ON orders(created_at);
+        CREATE INDEX IF NOT EXISTS idx_orders_synced ON orders(synced);
+      `);
+      console.log('[Migration] Rebuilt orders table with delivery order_type support');
+    }
+  } catch (e) { console.warn('[Migration] order_type fix skipped:', e.message); }
+
   // Seed default admin if none exists
   const adminExists = db.prepare('SELECT id FROM users WHERE role = ?').get('admin');
   if (!adminExists) {
