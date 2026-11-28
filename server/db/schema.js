@@ -151,7 +151,7 @@ function initDb() {
   // Fix CHECK constraint on order_type to include 'delivery' (old DBs only had dine_in/takeaway/zomato/swiggy)
   try {
     const col = db.prepare(`SELECT sql FROM sqlite_master WHERE type='table' AND name='orders'`).get();
-    if (col && col.sql && col.sql.includes("'dine_in','takeaway','zomato','swiggy'") && !col.sql.includes("'delivery'")) {
+    if (col && col.sql && !col.sql.includes("'delivery'")) {
       db.exec(`
         CREATE TABLE IF NOT EXISTS orders_new (
           id TEXT PRIMARY KEY, outlet_id TEXT NOT NULL REFERENCES outlets(id),
